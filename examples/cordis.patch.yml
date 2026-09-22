@@ -1,0 +1,29 @@
+# Preserve the existing `connection` row unchanged. Add this Host-only row after it.
+plugins:
+  group:web:
+    - id: senti100-oidc
+      name: '@senti100/dsh-oidc'
+      inject: [webServer, connection, credentials]
+      config:
+        issuer: !!js process.env.DSH_OIDC_ISSUER
+        clientId: !!js process.env.DSH_OIDC_CLIENT_ID
+        clientSecretRef: !!js process.env.DSH_OIDC_CLIENT_SECRET_REF
+        publicOrigin: !!js process.env.DSH_OIDC_PUBLIC_ORIGIN
+        allowedSubjects: !!js JSON.parse(process.env.DSH_OIDC_ALLOWED_SUBJECTS || '[]')
+        groupMode: any
+
+    # Keep the native row; configure the public authority on it.
+    - id: connection
+      name: '@deepseek-ai/dsh-client-connection'
+      config:
+        trustedHosts:
+          !!js [new URL(process.env.DSH_OIDC_PUBLIC_ORIGIN).host, ...ctx.webRuntime.trustedHosts]
+
+    # Patch replacement is whole-object: restate the deployment's complete web-runtime config.
+    - id: web-runtime
+      name: '@deepseek-ai/dsh-web-runtime'
+      config:
+        host: 127.0.0.1
+        port: 3080
+        printUrl: false
+        openBrowser: false

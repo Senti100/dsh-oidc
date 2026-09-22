@@ -1,0 +1,39 @@
+# Illustrative synthetic hostname only. Do not enable an HTTP listener for this host.
+https://dsh.example {
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    # Prevent attacker-supplied identity/proxy headers from reaching DSH.
+    request_header -X-Forwarded-User
+    request_header -X-Forwarded-Email
+    request_header -X-Auth-Request-User
+    request_header -Remote-User
+
+    # Authentication endpoints must remain reachable before a session exists.
+    handle /auth/* {
+        reverse_proxy 127.0.0.1:3080 {
+            header_up Host {host}
+        }
+    }
+
+    # Mandatory guard for root, assets, API, streams, and WebSocket upgrades.
+    handle {
+        forward_auth 127.0.0.1:3080 {
+            uri /auth/check
+            header_up Host {host}
+        }
+        reverse_proxy 127.0.0.1:3080 {
+            header_up Host {host}
+        }
+    }
+
+    # Production logging must omit/redact query strings because DSH's temporary
+    # native bootstrap URL contains a bearer token.
+    log {
+        format filter {
+            wrap json
+            fields {
+                request>uri query delete
+            }
+        }
+    }
+}

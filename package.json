@@ -1,0 +1,73 @@
+{
+  "name": "@senti100/dsh-oidc",
+  "version": "0.1.0-alpha.0",
+  "description": "Provider-neutral OpenID Connect admission for DeepSeek Harness Web",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0 <23"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Senti100/dsh-oidc.git"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "SECURITY.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "docs",
+    "examples"
+  ],
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "pack:check": "node scripts/check-pack.mjs",
+    "secret:scan": "node scripts/secret-scan.mjs",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run pack:check && npm run secret:scan"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "3.18.2",
+    "openid-client": "^6.8.8"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-client-connection": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-credentials": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "0.1.5-rc.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-client-connection": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-credentials": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "0.1.5-rc.1",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.18.6",
+    "@vitest/coverage-v8": "^4.1.11",
+    "eslint": "^10.11.0",
+    "eslint-config-prettier": "^10.1.8",
+    "jose": "^6.2.2",
+    "prettier": "^3.6.2",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "esbuild": "0.28.2"
+  }
+}
