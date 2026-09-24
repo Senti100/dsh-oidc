@@ -33,10 +33,11 @@
     "build": "tsup && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --check . --ignore-path .prettierignore --ignore-path tests/fixtures/full-profile/.prettierignore",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:acceptance": "node scripts/integration-harness.mjs",
+    "test:acceptance": "npm run test:acceptance:full-profile",
+    "test:acceptance:full-profile": "node scripts/integration-harness.mjs",
     "pack:check": "node scripts/check-pack.mjs",
     "secret:scan": "node scripts/secret-scan.mjs",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run pack:check && npm run secret:scan"

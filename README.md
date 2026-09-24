@@ -54,7 +54,7 @@ npm ci
 npm run check
 ```
 
-`npm run check` runs formatting, lint, strict TypeScript, coverage-gated tests, build, package-content inspection, and a local secret-pattern scan. Provider interoperability and reverse-proxy/live-browser acceptance require separate disposable or attended environments; this repository does not contact a real provider during its local gates.
+`npm run check` runs formatting, lint, strict TypeScript, coverage-gated tests, build, package-content inspection, and a local secret-pattern scan. `npm run test:acceptance:full-profile` is the separate disposable release gate: it requires exact Caddy v2.10.2 through `DSH_OIDC_CADDY_BIN`, Corepack, and the checked-in pinned Playwright browser. The gate packs this repository, installs that tarball through the public `dsh plugin --profile web add --save-exact` command, boots the published DSH `0.1.5-rc.1` Web profile, and exercises synthetic OIDC/TLS plus the real frontend, API, upload, and WebSocket owners. `/events` is only a reserved no-owner admission probe in RC1; it is not claimed as DSH SSE coverage. The harness uses no live provider, DSH home, proxy, DNS, or credentials and removes its private temporary run root.
 
 ## Non-goals
 

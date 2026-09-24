@@ -1,7 +1,11 @@
-# Illustrative patch fragment, not a guaranteed complete 0.1.5-rc.1 Web profile.
-# Preserve the deployment's existing rows and values; add this Host-only row.
-plugins:
-  group:web:
+# Add this top-level patch entry to the shipped DSH Web profile. The Base and
+# Web bundles continue to own the native credentials, webServer, runtime, and
+# Connection rows; do not replace them. In the shipped bundle that owner is
+# `name: '@deepseek-ai/dsh-client-connection'`; supply `trustedHosts:` with the
+# public authority through `dsh web --trusted-host`. The acceptance lane's Web
+# CLI flags correspond to `host: 127.0.0.1`, `printUrl: false`, and
+# `openBrowser: false` without inventing a replacement runtime row.
+- insert:
     - id: senti100-oidc
       name: '@senti100/dsh-oidc'
       inject: [webServer, connection, credentials]
@@ -12,20 +16,3 @@ plugins:
         publicOrigin: !!js process.env.DSH_OIDC_PUBLIC_ORIGIN
         allowedSubjects: !!js JSON.parse(process.env.DSH_OIDC_ALLOWED_SUBJECTS || '[]')
         groupMode: any
-
-    # Keep the native row; configure the public authority on it.
-    - id: connection
-      name: '@deepseek-ai/dsh-client-connection'
-      config:
-        trustedHosts:
-          !!js [new URL(process.env.DSH_OIDC_PUBLIC_ORIGIN).host, ...ctx.webRuntime.trustedHosts]
-
-    # Illustration only. Patch replacement is whole-object: a real deployment
-    # must restate its complete source-verified web-runtime configuration here.
-    - id: web-runtime
-      name: '@deepseek-ai/dsh-web-runtime'
-      config:
-        host: 127.0.0.1
-        port: 3080
-        printUrl: false
-        openBrowser: false

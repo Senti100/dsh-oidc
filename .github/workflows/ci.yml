@@ -27,6 +27,15 @@ jobs:
       - run: npm run build
       - run: npm run pack:check
       - run: npm run secret:scan
+      - name: Provision exact full-profile runtime and Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global --force corepack@0.34.0
+          corepack enable
+          corepack prepare pnpm@10.18.3 --activate
+          corepack pnpm --dir tests/fixtures/full-profile install --frozen-lockfile
+          tests/fixtures/full-profile/node_modules/.bin/playwright install --with-deps chromium
       - name: Provision exact Caddy acceptance binary
         shell: bash
         run: |
@@ -38,7 +47,7 @@ jobs:
           docker cp "$container:/usr/bin/caddy" "$RUNNER_TEMP/caddy"
           chmod 0755 "$RUNNER_TEMP/caddy"
           "$RUNNER_TEMP/caddy" version
-      - name: Real DSH and Caddy acceptance
+      - name: Published DSH Web full-profile acceptance
         env:
           DSH_OIDC_CADDY_BIN: ${{ runner.temp }}/caddy
-        run: npm run test:acceptance
+        run: npm run test:acceptance:full-profile
