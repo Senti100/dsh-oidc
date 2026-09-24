@@ -4,6 +4,7 @@ import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
 import { apply, inject, name } from '../src/index.js'
+import { assertRuntimeCompatibility, supportedRuntimePackages } from '../src/compatibility.js'
 
 function acceptsNativeConnection(
   connection: Pick<HostConnectionHandle, 'authenticatedUrl'>,
@@ -38,7 +39,60 @@ describe('DSH public compatibility surface', () => {
     expect(manifest.exports).not.toHaveProperty('./client')
   })
 
-  it('registers the complete exact authentication route set through the public webserver seam', () => {
+  it('records current upstream as source-compatible but explicitly runtime-unsupported', async () => {
+    const fixture = (
+      await import('./fixtures/dsh-0.1.7-alpha.2-public-seams.json', { with: { type: 'json' } })
+    ).default
+    expect(fixture).toMatchObject({
+      upstreamVersion: '0.1.7-alpha.2',
+      sourceRevision: '00102833dfaee1da9f48a3a8eae9d34005a75218',
+      sourceCompatibleAtRevision: true,
+      runtimeSupported: false,
+    })
+    expect(Object.values(fixture.publicSeams).every(Boolean)).toBe(true)
+  })
+
+  it.each(Object.entries(supportedRuntimePackages))(
+    'accepts exact runtime metadata for %s@%s',
+    async () => {
+      await expect(
+        assertRuntimeCompatibility(async (requested) => ({
+          version: supportedRuntimePackages[requested],
+        })),
+      ).resolves.toBeUndefined()
+    },
+  )
+
+  it.each(Object.entries(supportedRuntimePackages))(
+    'refuses mismatched runtime metadata for %s before registration',
+    async (packageName) => {
+      await expect(
+        assertRuntimeCompatibility(async (requested) => ({
+          version:
+            requested === packageName ? '0.0.0-unsupported' : supportedRuntimePackages[requested],
+        })),
+      ).rejects.toMatchObject({
+        name: 'RuntimeCompatibilityError',
+        code: 'DSH_OIDC_UNSUPPORTED_RUNTIME',
+        packageName,
+        observedVersion: '0.0.0-unsupported',
+      })
+    },
+  )
+
+  it('refuses unreadable public metadata with a sanitized marker', async () => {
+    await expect(
+      assertRuntimeCompatibility(async () => Promise.reject(new Error('/private/path'))),
+    ).rejects.toMatchObject({ observedVersion: '<unreadable>' })
+  })
+
+  it('does not echo malformed metadata as an observed version', async () => {
+    await expect(
+      assertRuntimeCompatibility(async () => ({ version: 'secret\n/private/path'.repeat(20) })),
+    ).rejects.toMatchObject({ observedVersion: '<invalid>' })
+  })
+
+  it('registers the complete exact authentication route set through the public webserver seam', async () => {
     const routes: Array<{ kind: string; path: string }> = []
     const effects: Array<() => void> = []
     const ctx = {
@@ -48,7 +102,10 @@ describe('DSH public compatibility surface', () => {
       webServer: {
         register(route: { kind: string; path: string }) {
           routes.push(route)
-          return () => undefined
+          return () => {
+            const index = routes.indexOf(route)
+            if (index !== -1) routes.splice(index, 1)
+          }
         },
       },
       effect(factory: () => () => void) {
@@ -56,7 +113,7 @@ describe('DSH public compatibility surface', () => {
       },
     } as unknown as Context
 
-    apply(ctx, {
+    await apply(ctx, {
       issuer: 'https://id.example/tenant',
       clientId: 'client',
       publicOrigin: 'https://dsh.example',
@@ -71,5 +128,6 @@ describe('DSH public compatibility surface', () => {
     ])
     expect(effects).toHaveLength(4)
     for (const dispose of effects) dispose()
+    expect(routes).toEqual([])
   })
 })

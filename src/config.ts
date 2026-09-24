@@ -11,9 +11,9 @@ export interface Config {
   sessionMaxAgeSeconds?: number
   sessionIdleTimeoutSeconds?: number
   transactionMaxAgeSeconds?: number
-  allowedSubjects?: Array<{ issuer: string; subject: string }>
-  allowedEmails?: string[]
-  allowedGroups?: string[]
+  allowedSubjects?: Array<{ issuer: string; subject: string }> | undefined
+  allowedEmails?: string[] | undefined
+  allowedGroups?: string[] | undefined
   groupMode?: 'any' | 'all'
   groupsClaim?: string
   requiredClaims?: Record<string, string[]>
@@ -44,11 +44,12 @@ export const Config: z<Config> = z.object({
     .min(30)
     .max(5 * 60)
     .default(5 * 60),
-  allowedSubjects: z.array(
-    z.object({ issuer: z.string().required(), subject: z.string().required() }),
-  ),
-  allowedEmails: z.array(String),
-  allowedGroups: z.array(String),
+  allowedSubjects: z.union([
+    z.array(z.object({ issuer: z.string().required(), subject: z.string().required() })),
+    z.const(undefined),
+  ]),
+  allowedEmails: z.union([z.array(String), z.const(undefined)]),
+  allowedGroups: z.union([z.array(String), z.const(undefined)]),
   groupMode: z.union([z.const('any'), z.const('all')]).default('any'),
   groupsClaim: z.string().default('groups'),
   requiredClaims: z.dict(z.array(String)).default({}),

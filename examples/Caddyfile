@@ -1,39 +1,48 @@
 # Illustrative synthetic hostname only. Do not enable an HTTP listener for this host.
 https://dsh.example {
-    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
-    # Prevent attacker-supplied identity/proxy headers from reaching DSH.
-    request_header -X-Forwarded-User
-    request_header -X-Forwarded-Email
-    request_header -X-Auth-Request-User
-    request_header -Remote-User
+	# Strip browser-supplied credentials, proxy credentials, the dedicated client
+	# address, and common identity aliases before any handler runs.
+	request_header -Authorization
+	request_header -Proxy-Authorization
+	request_header -X-Dsh-Oidc-Client-Ip
+	request_header -X-Forwarded-User
+	request_header -X-Forwarded-Email
+	request_header -X-Auth-Request-User
+	request_header -X-Auth-Request-Email
+	request_header -X-Remote-User
+	request_header -Remote-User
 
-    # Authentication endpoints must remain reachable before a session exists.
-    handle /auth/* {
-        reverse_proxy 127.0.0.1:3080 {
-            header_up Host {host}
-        }
-    }
+	# Authentication endpoints are reachable before a session exists. Caddy
+	# replaces the stripped address with the connection-observed remote host.
+	handle /auth/* {
+		reverse_proxy 127.0.0.1:3080 {
+			header_up Host {host}
+			header_up X-Dsh-Oidc-Client-Ip {remote_host}
+		}
+	}
 
-    # Mandatory guard for root, assets, API, streams, and WebSocket upgrades.
-    handle {
-        forward_auth 127.0.0.1:3080 {
-            uri /auth/check
-            header_up Host {host}
-        }
-        reverse_proxy 127.0.0.1:3080 {
-            header_up Host {host}
-        }
-    }
+	# Mandatory guard for root, assets, API, uploads, streams, and upgrades.
+	handle {
+		forward_auth 127.0.0.1:3080 {
+			uri /auth/check
+			header_up Host {host}
+			header_up X-Dsh-Oidc-Client-Ip {remote_host}
+		}
+		reverse_proxy 127.0.0.1:3080 {
+			header_up Host {host}
+		}
+	}
 
-    # Production logging must omit/redact query strings because DSH's temporary
-    # native bootstrap URL contains a bearer token.
-    log {
-        format filter {
-            wrap json
-            fields {
-                request>uri query delete
-            }
-        }
-    }
+	# Production logging must omit/redact query strings because DSH's temporary
+	# native bootstrap URL contains a bearer token.
+	log {
+		format filter {
+			wrap json
+			fields {
+				request>uri query delete
+			}
+		}
+	}
 }

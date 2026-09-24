@@ -38,6 +38,17 @@ describe('bounded one-use state', () => {
     expect(sessions.read(next?.value, 301)).toBeUndefined()
   })
 
+  it('distinguishes idle expiry from absolute expiry after activity', () => {
+    const idle = new BrowserSessions(10_000, 100, 1)
+    const idleSession = idle.create(principal, 0)
+    expect(idle.read(idleSession?.value, 101)).toBeUndefined()
+
+    const absolute = new BrowserSessions(1_000, 800, 1)
+    const absoluteSession = absolute.create(principal, 0)
+    expect(absolute.read(absoluteSession?.value, 700)).toBeDefined()
+    expect(absolute.read(absoluteSession?.value, 1_001)).toBeUndefined()
+  })
+
   it('formats exact secure cookies and reads only exact names', () => {
     vi.spyOn(Date, 'now').mockReturnValue(0)
     expect(secureCookie(SESSION_COOKIE, 'opaque', 60)).toBe(
@@ -55,5 +66,13 @@ describe('bounded one-use state', () => {
     expect(limiter.admit('k', 1)).toBe(true)
     expect(limiter.admit('k', 2)).toBe(false)
     expect(limiter.admit('k', 100)).toBe(true)
+  })
+
+  it('bounds distinct limiter keys and frees expired windows', () => {
+    const limiter = new FixedWindowRateLimiter(1, 100, 2)
+    expect(limiter.admit('a', 0)).toBe(true)
+    expect(limiter.admit('b', 0)).toBe(true)
+    expect(limiter.admit('c', 0)).toBe(false)
+    expect(limiter.admit('c', 100)).toBe(true)
   })
 })

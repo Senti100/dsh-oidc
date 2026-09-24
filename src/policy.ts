@@ -10,8 +10,7 @@ export interface Principal {
   readonly groups: readonly string[]
 }
 
-function exactClaimValues(value: unknown): readonly string[] | undefined {
-  if (typeof value === 'string') return value.length > 0 ? [value] : undefined
+function exactArrayClaimValues(value: unknown): readonly string[] | undefined {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_GROUPS) return undefined
   if (
     !value.every(
@@ -20,6 +19,12 @@ function exactClaimValues(value: unknown): readonly string[] | undefined {
   )
     return undefined
   return new Set(value).size === value.length ? value : undefined
+}
+
+function exactCustomClaimValues(value: unknown): readonly string[] | undefined {
+  if (typeof value === 'string')
+    return value.length > 0 && value.length <= MAX_GROUP_LENGTH ? [value] : undefined
+  return exactArrayClaimValues(value)
 }
 
 /** Apply exact subject/group/claim admission policy to validated ID-token claims. */
@@ -35,11 +40,13 @@ export function authorizeClaims(
     policy.allowedSubjects.has(`${expectedIssuer}\u0000${claims.sub}`)
   const emailAllowed =
     policy.allowedEmails.size === 0 ||
-    (typeof claims.email === 'string' && policy.allowedEmails.has(claims.email))
+    (typeof claims.email === 'string' &&
+      claims.email_verified === true &&
+      policy.allowedEmails.has(claims.email))
   let groups: readonly string[] = []
   let groupAllowed = false
   if (policy.allowedGroups.size > 0) {
-    const parsed = exactClaimValues(claims[policy.groupsClaim])
+    const parsed = exactArrayClaimValues(claims[policy.groupsClaim])
     if (parsed === undefined) return undefined
     groups = parsed
     groupAllowed =
@@ -50,7 +57,7 @@ export function authorizeClaims(
   if (!subjectAllowed || !emailAllowed || (policy.allowedGroups.size > 0 && !groupAllowed))
     return undefined
   for (const [claim, allowed] of policy.requiredClaims) {
-    const actual = exactClaimValues(claims[claim])
+    const actual = exactCustomClaimValues(claims[claim])
     if (actual === undefined || !actual.some((value) => allowed.has(value))) return undefined
   }
   const display =

@@ -1,7 +1,12 @@
 import { Readable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { OidcAdmission, type AdmissionLogger, type CredentialResolver } from '../src/admission.js'
+import {
+  CLIENT_IP_HEADER,
+  OidcAdmission,
+  type AdmissionLogger,
+  type CredentialResolver,
+} from '../src/admission.js'
 import { resolveConfig } from '../src/config.js'
 import type { AuthorizationStart, CallbackChecks, OidcProtocol } from '../src/oidc.js'
 import { SESSION_COOKIE, TRANSACTION_COOKIE } from '../src/state.js'
@@ -31,11 +36,17 @@ function response(): { value: ServerResponse; captured: CapturedResponse } {
 function request(
   method: string,
   url: string,
-  headers: Record<string, string> = {},
+  headers: Record<string, string | string[]> = {},
   body?: string,
+  remoteAddress = '127.0.0.1',
 ): IncomingMessage {
   const value = Readable.from(body === undefined ? [] : [Buffer.from(body)])
-  Object.assign(value, { method, url, headers: { host: 'dsh.example', ...headers } })
+  Object.assign(value, {
+    method,
+    url,
+    headers: { host: 'dsh.example', [CLIENT_IP_HEADER]: '192.0.2.10', ...headers },
+    socket: { remoteAddress },
+  })
   return value as IncomingMessage
 }
 
@@ -131,6 +142,78 @@ async function login(
 beforeEach(() => vi.restoreAllMocks())
 
 describe('OIDC route admission', () => {
+  it('answers HEAD login without creating transaction state', async () => {
+    const { admission, protocol } = harness()
+    const start = vi.spyOn(protocol, 'start')
+    const res = response()
+    await admission.login(request('HEAD', '/auth/login'), res.value)
+    expect(res.captured).toMatchObject({ status: 204 })
+    expect(res.captured.headers?.['set-cookie']).toBeUndefined()
+    expect(start).not.toHaveBeenCalled()
+
+    const mapped = response()
+    await admission.login(
+      request('HEAD', '/auth/login', {}, undefined, '::ffff:127.0.0.1'),
+      mapped.value,
+    )
+    expect(mapped.captured.status).toBe(204)
+  })
+
+  it('trusts one proxy-set client IP only from loopback and rejects spoofed or malformed values', async () => {
+    const { admission } = harness()
+    for (const req of [
+      request('GET', '/auth/login', { [CLIENT_IP_HEADER]: '192.0.2.10' }, undefined, '10.0.0.9'),
+      request('GET', '/auth/login', { [CLIENT_IP_HEADER]: '192.0.2.10, 198.51.100.4' }),
+      request('GET', '/auth/login', { [CLIENT_IP_HEADER]: ['192.0.2.10', '198.51.100.4'] }),
+      request('GET', '/auth/login', { [CLIENT_IP_HEADER]: 'not-an-ip' }),
+      request('GET', '/auth/login', { [CLIENT_IP_HEADER]: '' }),
+    ]) {
+      const res = response()
+      await admission.login(req, res.value)
+      expect(res.captured.status).toBe(403)
+    }
+  })
+
+  it('rate limits one client without denying a distinct client', async () => {
+    const { admission } = harness()
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const admitted = response()
+      await admission.login(
+        request('GET', '/auth/login', { [CLIENT_IP_HEADER]: '192.0.2.20' }),
+        admitted.value,
+      )
+      expect(admitted.captured.status).toBe(303)
+    }
+    const limited = response()
+    await admission.login(
+      request('GET', '/auth/login', { [CLIENT_IP_HEADER]: '192.0.2.20' }),
+      limited.value,
+    )
+    expect(limited.captured.status).toBe(429)
+
+    const independent = response()
+    await admission.login(
+      request('GET', '/auth/login', { [CLIENT_IP_HEADER]: '198.51.100.30' }),
+      independent.value,
+    )
+    expect(independent.captured.status).toBe(303)
+  })
+
+  it('fails closed when the configured client credential is missing', async () => {
+    const { protocol, messages } = harness()
+    const admission = new OidcAdmission(
+      config,
+      { resolve: vi.fn(async () => undefined) },
+      { authenticatedUrl: (origin) => origin },
+      protocol,
+      { info: (message) => messages.push(message), warn: (message) => messages.push(message) },
+    )
+    const res = response()
+    await admission.login(request('GET', '/auth/login'), res.value)
+    expect(res.captured).toMatchObject({ status: 503, body: 'authentication unavailable\n' })
+    expect(protocol.callbackChecks).toBeUndefined()
+  })
+
   it('runs one-use authorization and bootstraps the unchanged native DSH connection', async () => {
     const { admission, protocol, messages } = harness()
     const started = await login(admission)
@@ -237,6 +320,21 @@ describe('OIDC route admission', () => {
       denied.value,
     )
     expect(denied.captured.status).toBe(403)
+  })
+
+  it('rejects transaction cookie and state from different login attempts', async () => {
+    const { admission } = harness()
+    const first = await login(admission)
+    const second = await login(admission)
+    const mismatched = response()
+    await admission.callback(
+      request('GET', `/auth/callback?code=code&state=${first.state}`, { cookie: second.cookie }),
+      mismatched.value,
+    )
+    expect(mismatched.captured).toMatchObject({
+      status: 400,
+      body: 'invalid authentication response\n',
+    })
   })
 
   it('requires same-origin CSRF POST logout and invalidates forward-auth immediately', async () => {

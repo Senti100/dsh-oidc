@@ -1,0 +1,13 @@
+{
+  "upstreamVersion": "0.1.7-alpha.2",
+  "sourceRevision": "00102833dfaee1da9f48a3a8eae9d34005a75218",
+  "sourceCompatibleAtRevision": true,
+  "runtimeSupported": false,
+  "publicSeams": {
+    "cordisContext": true,
+    "webServerExactRouteRegistration": true,
+    "credentialReferenceResolution": true,
+    "hostConnectionAuthenticatedUrl": true
+  },
+  "note": "Static source-compatibility observation only; runtime loading remains refused until a separately reviewed adapter/version lane is released."
+}

@@ -3,6 +3,7 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-credentials'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { OidcAdmission } from './admission.js'
+import { assertRuntimeCompatibility } from './compatibility.js'
 import { Config, resolveConfig, type Config as OidcConfig } from './config.js'
 import { OpenIdClientProtocol } from './oidc.js'
 
@@ -14,8 +15,9 @@ export const name = 'senti100-oidc'
 export const inject = ['webServer', 'connection', 'credentials']
 
 /** Register Host-only OIDC routes alongside the unchanged native Connection plugin. */
-export function apply(ctx: Context, rawConfig: OidcConfig): void {
+export async function apply(ctx: Context, rawConfig: OidcConfig): Promise<void> {
   const config = resolveConfig(rawConfig)
+  await assertRuntimeCompatibility()
   const admission = new OidcAdmission(
     config,
     ctx.credentials,

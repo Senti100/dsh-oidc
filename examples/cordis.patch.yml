@@ -1,4 +1,5 @@
-# Preserve the existing `connection` row unchanged. Add this Host-only row after it.
+# Illustrative patch fragment, not a guaranteed complete 0.1.5-rc.1 Web profile.
+# Preserve the deployment's existing rows and values; add this Host-only row.
 plugins:
   group:web:
     - id: senti100-oidc
@@ -19,7 +20,8 @@ plugins:
         trustedHosts:
           !!js [new URL(process.env.DSH_OIDC_PUBLIC_ORIGIN).host, ...ctx.webRuntime.trustedHosts]
 
-    # Patch replacement is whole-object: restate the deployment's complete web-runtime config.
+    # Illustration only. Patch replacement is whole-object: a real deployment
+    # must restate its complete source-verified web-runtime configuration here.
     - id: web-runtime
       name: '@deepseek-ai/dsh-web-runtime'
       config:

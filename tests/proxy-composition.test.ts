@@ -32,8 +32,15 @@ describe('proxy and composition security examples', () => {
 
   it('fixes public Host, strips identity headers, omits query logs, and documents HTTPS-only reachability', () => {
     expect(caddy).toContain('header_up Host {host}')
+    expect(caddy).toContain('request_header -Authorization')
+    expect(caddy).toContain('request_header -Proxy-Authorization')
+    expect(caddy).toContain('request_header -X-Dsh-Oidc-Client-Ip')
+    expect(caddy).toContain('header_up X-Dsh-Oidc-Client-Ip {remote_host}')
     expect(caddy).toContain('request_header -X-Forwarded-User')
     expect(caddy).toContain('request_header -X-Forwarded-Email')
+    expect(caddy).toContain('request_header -X-Auth-Request-User')
+    expect(caddy).toContain('request_header -X-Auth-Request-Email')
+    expect(caddy).toContain('request_header -X-Remote-User')
     expect(caddy).toContain('request_header -Remote-User')
     expect(caddy).toContain('request>uri query delete')
     expect(caddy).toContain('Strict-Transport-Security')

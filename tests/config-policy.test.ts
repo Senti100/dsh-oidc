@@ -95,27 +95,30 @@ describe('configuration and policy', () => {
         ?.displayName,
     ).toBe('Operator')
     expect(authorizeClaims({ ...claims, groups: ['a'] }, claims.iss, policy)).toBeUndefined()
-    expect(authorizeClaims({ ...claims, groups: 'a' }, claims.iss, policy)).toBeUndefined()
-    expect(
-      authorizeClaims({ ...claims, groups: ['a', 'a', 'b'] }, claims.iss, policy),
-    ).toBeUndefined()
-    expect(
-      authorizeClaims(
-        { ...claims, groups: Array.from({ length: 257 }, (_, index) => `g${String(index)}`) },
-        claims.iss,
-        policy,
-      ),
-    ).toBeUndefined()
-    expect(
-      authorizeClaims({ ...claims, groups: ['a', 2, 'b'] }, claims.iss, policy),
-    ).toBeUndefined()
+    for (const malformedGroups of [
+      'a',
+      [],
+      ['a', ''],
+      ['a', 'x'.repeat(513)],
+      ['a', 'a', 'b'],
+      ['a', 2, 'b'],
+      Array.from({ length: 257 }, (_, index) => `g${String(index)}`),
+    ]) {
+      expect(
+        authorizeClaims({ ...claims, groups: malformedGroups }, claims.iss, policy),
+      ).toBeUndefined()
+    }
   })
 
   it('treats email as an exact additional category rather than identity', () => {
     const policy = resolveConfig({ ...base, allowedEmails: ['operator@example.test'] }).policy
     const claims = { iss: base.issuer, sub: 'subject-1' }
     expect(
-      authorizeClaims({ ...claims, email: 'operator@example.test' }, base.issuer, policy),
+      authorizeClaims(
+        { ...claims, email: 'operator@example.test', email_verified: true },
+        base.issuer,
+        policy,
+      ),
     ).toBeDefined()
     expect(
       authorizeClaims({ ...claims, email: 'Operator@example.test' }, base.issuer, policy),
@@ -123,5 +126,14 @@ describe('configuration and policy', () => {
     expect(
       authorizeClaims({ ...claims, email: ['operator@example.test'] }, base.issuer, policy),
     ).toBeUndefined()
+    for (const email_verified of [undefined, false, 'true', 1, null]) {
+      expect(
+        authorizeClaims(
+          { ...claims, email: 'operator@example.test', email_verified },
+          base.issuer,
+          policy,
+        ),
+      ).toBeUndefined()
+    }
   })
 })

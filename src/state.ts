@@ -159,10 +159,15 @@ export class FixedWindowRateLimiter {
   constructor(
     private readonly limit: number,
     private readonly windowMilliseconds = 60_000,
+    private readonly maxKeys = 10_000,
   ) {}
   admit(key: string, now = Date.now()): boolean {
     const prior = this.windows.get(key)
     if (prior === undefined || prior.start + this.windowMilliseconds <= now) {
+      for (const [candidate, window] of this.windows) {
+        if (window.start + this.windowMilliseconds <= now) this.windows.delete(candidate)
+      }
+      if (!this.windows.has(key) && this.windows.size >= this.maxKeys) return false
       this.windows.set(key, { count: 1, start: now })
       return true
     }

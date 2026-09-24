@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { isIP } from 'node:net'
 import type { CredentialRef, ResolvedCredential } from '@deepseek-ai/dsh-credentials'
 import type { ResolvedConfig } from './config.js'
 import type { OidcProtocol } from './oidc.js'
@@ -21,6 +22,8 @@ const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
 } as const
 
+export const CLIENT_IP_HEADER = 'x-dsh-oidc-client-ip'
+
 export interface AdmissionLogger {
   info(message: string): void
   warn(message: string): void
@@ -37,6 +40,39 @@ export interface NativeConnectionLauncher {
 function header(req: IncomingMessage, name: string): string | undefined {
   const value = req.headers[name]
   return typeof value === 'string' ? value : undefined
+}
+
+function normalizedIp(value: string): string | undefined {
+  if (value.length === 0 || value.trim() !== value || value.includes(',')) return undefined
+  if (value.startsWith('::ffff:')) {
+    const mapped = value.slice('::ffff:'.length)
+    if (isIP(mapped) === 4) return `::ffff:${mapped}`
+  }
+  const version = isIP(value)
+  if (version === 4) return value
+  if (version === 6) {
+    const hostname = new URL(`http://[${value}]/`).hostname
+    return hostname.slice(1, -1)
+  }
+  return undefined
+}
+
+function loopbackPeer(req: IncomingMessage): boolean {
+  const peer = req.socket.remoteAddress
+  if (peer === undefined) return false
+  const normalized = normalizedIp(peer)
+  return (
+    normalized === '::1' ||
+    normalized?.startsWith('127.') === true ||
+    normalized?.startsWith('::ffff:127.') === true
+  )
+}
+
+function trustedClientIp(req: IncomingMessage): string | undefined {
+  if (!loopbackPeer(req)) return undefined
+  const raw = req.headers[CLIENT_IP_HEADER]
+  if (typeof raw !== 'string') return undefined
+  return normalizedIp(raw)
 }
 
 function methodNotAllowed(res: ServerResponse, allow: string): void {
@@ -129,7 +165,10 @@ export class OidcAdmission {
     if (req.method !== 'GET' && req.method !== 'HEAD') return methodNotAllowed(res, 'GET, HEAD')
     if (!this.trustedRequest(req)) return plain(res, 403, 'forbidden\n')
     if (header(req, 'sec-fetch-site') === 'cross-site') return plain(res, 403, 'forbidden\n')
-    if (!this.limiter.admit('login')) return plain(res, 429, 'too many requests\n')
+    const clientIp = trustedClientIp(req)
+    if (clientIp === undefined) return plain(res, 403, 'forbidden\n')
+    if (req.method === 'HEAD') return plain(res, 204, '', true)
+    if (!this.limiter.admit(clientIp)) return plain(res, 429, 'too many requests\n')
     const correlation = this.correlation()
     try {
       const started = await this.protocol.start(await this.secret())

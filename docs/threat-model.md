@@ -7,13 +7,13 @@ Assets are OIDC credentials, authorization transactions, local sessions, DSH's n
 ## Invariants
 
 1. The configured HTTPS issuer and fixed `publicOrigin` are the only URL authorities. Host and forwarded headers never derive redirect or issuer values.
-2. `openid-client` owns discovery, JWKS/signature, issuer, audience/`azp`, expiry/time, nonce, PKCE, and optional `auth_time` validation.
+2. `openid-client` owns discovery, JWKS/signature, issuer, audience, expiry/time, nonce, PKCE, and optional `auth_time` validation. The plugin then independently requires exact string `azp === clientId` whenever present and requires `azp` for a multi-valued audience.
 3. Each callback needs one unexpired transaction cookie and exact state, consumes the transaction before token exchange, and cannot replay.
 4. Configuration contains only a credential reference. Missing resolution fails closed. Logs and browser state exclude secret/token/code/state/nonce/verifier/claim material.
 5. Every configured policy category is required. Empty configured lists, malformed identity/groups/claims, and exact-match failures deny.
 6. Local session and transaction bearers are independent 256-bit values indexed by hash, memory-only, bounded, and expired by cleanup.
 7. Logout state change requires the local session, exact public Origin, content type, and session-bound CSRF value.
-8. The reverse proxy admits `/auth/*` directly but requires `/auth/check` success for every other HTTP and upgrade path. Logout therefore defeats stale DSH cookies.
+8. The reverse proxy admits `/auth/*` directly but requires `/auth/check` success for every other HTTP and upgrade path. It strips client authorization/proxy-authorization/identity/address aliases and supplies the login-limiter address from `{remote_host}`. The plugin accepts that header only over a loopback socket. Logout therefore defeats stale DSH cookies.
 9. DSH remains loopback-only. HTTPS-only reachability/HSTS protects its native non-Secure cookie.
 10. All admitted users are equivalent shared operators; no per-user DSH isolation or attribution is claimed.
 

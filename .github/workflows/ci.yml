@@ -11,8 +11,8 @@ jobs:
   local-gates:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.19.0
           cache: npm
@@ -27,3 +27,18 @@ jobs:
       - run: npm run build
       - run: npm run pack:check
       - run: npm run secret:scan
+      - name: Provision exact Caddy acceptance binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          image='caddy@sha256:d8c17a862962def15cde69863a3a463f25a2664942eafd7bdbf050e9c3116b83'
+          docker pull "$image"
+          container="$(docker create "$image")"
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+          docker cp "$container:/usr/bin/caddy" "$RUNNER_TEMP/caddy"
+          chmod 0755 "$RUNNER_TEMP/caddy"
+          "$RUNNER_TEMP/caddy" version
+      - name: Real DSH and Caddy acceptance
+        env:
+          DSH_OIDC_CADDY_BIN: ${{ runner.temp }}/caddy
+        run: npm run test:acceptance

@@ -23,8 +23,83 @@ export interface OidcProtocol {
   logoutUrl(clientSecret: string | undefined): Promise<URL | undefined>
 }
 
-const safeFetch: oidc.CustomFetch = async (input, init) =>
-  fetch(input, { ...init, redirect: 'manual' } as RequestInit)
+export type OidcValidationCode =
+  | 'OIDC_AZP_INVALID'
+  | 'OIDC_AZP_MISMATCH'
+  | 'OIDC_AZP_REQUIRED'
+  | 'OIDC_AUTH_TIME_FUTURE'
+  | 'OIDC_AUTH_TIME_INVALID'
+  | 'OIDC_AUTH_TIME_MISSING'
+  | 'OIDC_AUTH_TIME_STALE'
+  | 'OIDC_DISCOVERY_INVALID'
+  | 'OIDC_HTTP_REDIRECT'
+  | 'OIDC_HTTP_TIMEOUT'
+  | 'OIDC_IAT_INVALID'
+
+export class OidcValidationError extends Error {
+  constructor(
+    readonly code: OidcValidationCode,
+    options?: ErrorOptions,
+  ) {
+    super(`dsh-oidc: ${code}`, options)
+    this.name = 'OidcValidationError'
+  }
+}
+
+export function validateAuthorizedParty(
+  claims: Readonly<Record<string, unknown>>,
+  clientId: string,
+): void {
+  const { aud, azp } = claims
+  if (Array.isArray(aud) && aud.length > 1 && azp === undefined)
+    throw new OidcValidationError('OIDC_AZP_REQUIRED')
+  if (azp !== undefined && typeof azp !== 'string')
+    throw new OidcValidationError('OIDC_AZP_INVALID')
+  if (typeof azp === 'string' && azp !== clientId)
+    throw new OidcValidationError('OIDC_AZP_MISMATCH')
+}
+
+export function validateAuthenticationTime(
+  claims: Readonly<Record<string, unknown>>,
+  maximumAgeSeconds: number | undefined,
+  clockToleranceSeconds: number,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): void {
+  if (maximumAgeSeconds === undefined) return
+  const authTime = claims.auth_time
+  if (authTime === undefined) throw new OidcValidationError('OIDC_AUTH_TIME_MISSING')
+  if (!Number.isSafeInteger(authTime)) throw new OidcValidationError('OIDC_AUTH_TIME_INVALID')
+  if ((authTime as number) > nowSeconds + clockToleranceSeconds)
+    throw new OidcValidationError('OIDC_AUTH_TIME_FUTURE')
+  if ((authTime as number) + maximumAgeSeconds + clockToleranceSeconds < nowSeconds)
+    throw new OidcValidationError('OIDC_AUTH_TIME_STALE')
+}
+
+const safeFetch: oidc.CustomFetch = async (input, init) => {
+  let response: Response
+  try {
+    response = await fetch(input, { ...init, redirect: 'manual' } as RequestInit)
+  } catch (error) {
+    const name = error instanceof Error ? error.name : ''
+    if (name === 'AbortError' || name === 'TimeoutError') {
+      throw new OidcValidationError('OIDC_HTTP_TIMEOUT', { cause: error })
+    }
+    throw error
+  }
+  if (response.status >= 300 && response.status < 400) {
+    throw new OidcValidationError('OIDC_HTTP_REDIRECT')
+  }
+  return response
+}
+
+function findValidationError(error: unknown): OidcValidationError | undefined {
+  let current = error
+  for (let depth = 0; depth < 6 && current instanceof Error; depth += 1) {
+    if (current instanceof OidcValidationError) return current
+    current = current.cause
+  }
+  return undefined
+}
 
 /** Standards implementation backed by openid-client discovery, JWKS, and token validation. */
 export class OpenIdClientProtocol implements OidcProtocol {
@@ -41,11 +116,17 @@ export class OpenIdClientProtocol implements OidcProtocol {
     }
     const clientAuth =
       clientSecret === undefined ? oidc.None() : oidc.ClientSecretPost(clientSecret)
-    return oidc.discovery(this.config.issuer, this.config.clientId, metadata, clientAuth, {
-      [oidc.customFetch]: safeFetch,
-      timeout: this.requestTimeoutSeconds,
-      execute: [oidc.enableNonRepudiationChecks],
-    })
+    try {
+      return await oidc.discovery(this.config.issuer, this.config.clientId, metadata, clientAuth, {
+        [oidc.customFetch]: safeFetch,
+        timeout: this.requestTimeoutSeconds,
+        execute: [oidc.enableNonRepudiationChecks],
+      })
+    } catch (error) {
+      const deterministic = findValidationError(error)
+      if (deterministic !== undefined) throw deterministic
+      throw new OidcValidationError('OIDC_DISCOVERY_INVALID', { cause: error })
+    }
   }
 
   async start(clientSecret: string | undefined): Promise<AuthorizationStart> {
@@ -85,10 +166,16 @@ export class OpenIdClientProtocol implements OidcProtocol {
     })
     const claims = tokens.claims()
     if (claims === undefined) throw new Error('validated ID token claims are missing')
+    validateAuthorizedParty(claims, this.config.clientId)
+    validateAuthenticationTime(
+      claims,
+      this.config.maxAuthenticationAgeSeconds,
+      this.config.clockToleranceSeconds,
+    )
     const issuedAt = claims.iat
     const latestIssuedAt = Math.floor(Date.now() / 1000) + this.config.clockToleranceSeconds
     if (!Number.isSafeInteger(issuedAt) || issuedAt > latestIssuedAt) {
-      throw new Error('validated ID token has an invalid issuance time')
+      throw new OidcValidationError('OIDC_IAT_INVALID')
     }
     return claims
   }
