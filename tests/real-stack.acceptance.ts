@@ -135,8 +135,8 @@ function findDshPackage(name: string): string {
   throw new Error(`installed package was not found: ${name}`)
 }
 
-function attestDshClosure(): number {
-  const store = join(runtime, 'node_modules/.pnpm')
+function attestDshStore(store: string, label: string): Map<string, string> {
+  if (!existsSync(store)) throw new Error(`${label} pnpm store absent: ${store}`)
   const observed = new Map<string, string>()
   for (const entry of readdirSync(store)) {
     const scope = join(store, entry, 'node_modules/@deepseek-ai')
@@ -153,11 +153,58 @@ function attestDshClosure(): number {
         throw new Error(`invalid installed DSH manifest: ${manifestPath}`)
       }
       if (manifest.version !== '0.1.5-rc.1') {
-        throw new Error(`DSH closure drift: ${manifest.name}@${manifest.version}`)
+        throw new Error(`${label} DSH closure drift: ${manifest.name}@${manifest.version}`)
       }
       observed.set(manifest.name, manifest.version)
     }
   }
+  return observed
+}
+
+function attestProfileDshClosure(): number {
+  const profileRoot = join(dshHome, 'profiles/web')
+  const lockPath = join(profileRoot, 'pnpm-lock.yaml')
+  if (!existsSync(lockPath)) throw new Error(`profile lock absent: ${lockPath}`)
+
+  const observed = new Map<string, string>()
+  const lockText = readFileSync(lockPath, 'utf8')
+  const lockKey = /^\s{2}'(@deepseek-ai\/dsh(?:-[^@']+)?)@([^']+)':$/gmu
+  for (const match of lockText.matchAll(lockKey)) {
+    const name = match[1]
+    const version = match[2]?.split('(', 1)[0]
+    if (name === undefined || version === undefined) continue
+    if (version !== '0.1.5-rc.1') {
+      throw new Error(`profile lock DSH closure drift: ${name}@${version}`)
+    }
+    observed.set(name, version)
+  }
+  if (observed.size === 0) throw new Error('profile lock contained no DSH packages')
+
+  const scope = join(profileRoot, 'node_modules/@deepseek-ai')
+  if (!existsSync(scope)) throw new Error(`profile package scope absent: ${scope}`)
+  let installedCount = 0
+  for (const child of readdirSync(scope)) {
+    if (child !== 'dsh' && !child.startsWith('dsh-')) continue
+    const manifestPath = join(scope, child, 'package.json')
+    if (!existsSync(manifestPath)) continue
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      name?: unknown
+      version?: unknown
+    }
+    if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') {
+      throw new Error(`invalid profile DSH manifest: ${manifestPath}`)
+    }
+    if (manifest.version !== '0.1.5-rc.1') {
+      throw new Error(`profile installed DSH closure drift: ${manifest.name}@${manifest.version}`)
+    }
+    installedCount += 1
+  }
+  if (installedCount === 0) throw new Error('profile installed no direct DSH packages')
+  return observed.size
+}
+
+function attestDshClosure(): { runtime: number; profile: number } {
+  const runtimeObserved = attestDshStore(join(runtime, 'node_modules/.pnpm'), 'runtime')
   for (const requiredName of [
     '@deepseek-ai/dsh',
     '@deepseek-ai/dsh-web-app',
@@ -167,9 +214,10 @@ function attestDshClosure(): number {
     '@deepseek-ai/dsh-api-gateway',
     '@deepseek-ai/dsh-web-frontend',
   ]) {
-    if (!observed.has(requiredName)) throw new Error(`required DSH owner absent: ${requiredName}`)
+    if (!runtimeObserved.has(requiredName))
+      throw new Error(`required runtime DSH owner absent: ${requiredName}`)
   }
-  return observed.size
+  return { runtime: runtimeObserved.size, profile: attestProfileDshClosure() }
 }
 
 async function curl(host: string, url: string, extra: readonly string[] = []): Promise<HttpResult> {
@@ -591,8 +639,8 @@ async function setupStack(): Promise<void> {
   mkdirSync(stackRoot, { recursive: true, mode: 0o700 })
   chmodSync(stackRoot, 0o700)
   const closureCount = attestDshClosure()
-  if (closureCount < 200)
-    throw new Error(`installed DSH closure was unexpectedly small: ${closureCount}`)
+  if (closureCount.runtime < 200)
+    throw new Error(`installed runtime DSH closure was unexpectedly small: ${closureCount.runtime}`)
   const frontendManifest = findDshPackage('@deepseek-ai/dsh-web-frontend')
   const frontendIndex = readFileSync(join(dirname(frontendManifest), 'dist/index.html'), 'utf8')
   const asset = /<script[^>]+src="([^"?]+\.js)"/u.exec(frontendIndex)?.[1]
@@ -622,7 +670,6 @@ async function setupStack(): Promise<void> {
   })
   caPath = join(stackRoot, 'caddy-data/caddy/pki/authorities/local/root.crt')
   await waitForCaddy()
-  if (controlledFailure) throw new Error('CONTROLLED_SETUP_FAILURE')
 
   await startDsh()
   await waitForOidcRoute()
@@ -640,6 +687,7 @@ async function setupStack(): Promise<void> {
   })
   context = await browser.newContext({ ignoreHTTPSErrors: true })
   page = await context.newPage()
+  if (controlledFailure) throw new Error('CONTROLLED_SETUP_FAILURE')
 }
 
 async function cleanupStack(): Promise<void> {
@@ -772,6 +820,7 @@ describe('published DSH 0.1.5-rc.1 full Web profile', { concurrent: false }, () 
           assetStatus: asset.status,
           missingStatus: missing.status,
           missingType: missing.headers.get('content-type'),
+          missingBody: await missing.text(),
           uploadStatus: upload.status,
           uploadType: upload.headers.get('content-type'),
           uploadBody: (await upload.json()) as unknown,
@@ -782,6 +831,7 @@ describe('published DSH 0.1.5-rc.1 full Web profile', { concurrent: false }, () 
     expect(ownerResults.assetStatus).toBe(200)
     expect(ownerResults.missingStatus).toBe(404)
     expect(ownerResults.missingType).not.toContain('text/html')
+    expect(ownerResults.missingBody).toBe('not found')
     expect(ownerResults.uploadStatus).toBe(200)
     expect(ownerResults.uploadType).toContain('application/json')
     expect(ownerResults.uploadBody).toMatchObject({

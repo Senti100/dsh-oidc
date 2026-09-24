@@ -19,4 +19,4 @@ Assets are OIDC credentials, authorization transactions, local sessions, DSH's n
 
 ## Residual risks
 
-Provider policy changes remain latent until idle/absolute expiry or restart. Memory-local state does not support multi-process replicas. Provider back-channel logout/revocation and refresh tokens are absent. The DSH bootstrap URL carries a temporary query bearer, requiring URL printing and query logging to be disabled. Real Authentik, Dex/Keycloak, Caddy, and browser interoperability require separate isolated gates.
+Provider policy changes remain latent until idle/absolute expiry or restart. Memory-local state does not support multi-process replicas. Provider back-channel logout/revocation and refresh tokens are absent. The DSH bootstrap URL carries a temporary query bearer, requiring URL printing and query logging to be disabled. CI and local full-profile acceptance exercise digest-pinned Caddy and a lock-pinned Playwright browser; real Authentik, Dex/Keycloak, and live deployment interoperability remain separate isolated gates.

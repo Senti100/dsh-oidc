@@ -22,10 +22,11 @@ if (caddy === undefined || caddy === '') {
     'FULL_PROFILE_BLOCKED: set DSH_OIDC_CADDY_BIN to the exact Caddy v2.10.2 binary; skip is not pass',
   )
 }
-const caddyVersion = execFileSync(caddy, ['version'], { encoding: 'utf8' }).trim()
-if (!caddyVersion.startsWith(expectedCaddy)) {
+const caddyVersionOutput = execFileSync(caddy, ['version'], { encoding: 'utf8' }).trim()
+const caddyVersion = caddyVersionOutput.split(/\s+/u)[0] ?? ''
+if (caddyVersion !== expectedCaddy) {
   throw new Error(
-    `FULL_PROFILE_BLOCKED: expected ${expectedCaddy}, observed ${caddyVersion || '<empty>'}`,
+    `FULL_PROFILE_BLOCKED: expected ${expectedCaddy}, observed ${caddyVersionOutput || '<empty>'}`,
   )
 }
 execFileSync(caddy, ['adapt', '--config', 'examples/Caddyfile', '--adapter', 'caddyfile'], {
@@ -152,7 +153,7 @@ try {
   if (residue.length !== 0)
     throw new Error(`acceptance stack residue remained: ${residue.join(', ')}`)
   console.log(
-    `full-profile acceptance passed: DSH ${expectedDsh}; overrides=${String(overrideCount)}; packed plugin loaded; browser scenarios=5; failure cleanup=pass; ${caddyVersion}`,
+    `full-profile acceptance passed: DSH ${expectedDsh}; overrides=${String(overrideCount)}; packed plugin loaded; browser scenarios=5; failure cleanup=pass; ${caddyVersionOutput}`,
   )
 } finally {
   rmSync(runRoot, { recursive: true, force: true })
