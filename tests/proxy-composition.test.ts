@@ -8,13 +8,14 @@ const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
 describe('proxy and composition security examples', () => {
   it('preserves native Connection and adds a Host-only plugin', () => {
     expect(patch).toContain("name: '@senti100/dsh-oidc'")
-    expect(patch).toContain("name: '@deepseek-ai/dsh-client-connection'")
+    expect(patch).toContain('Connection is still owned by `@deepseek-ai/dsh-client-connection`')
+    expect(patch).not.toContain("name: '@deepseek-ai/dsh-client-connection'")
     expect(patch).toContain('inject: [webServer, connection, credentials]')
     expect(patch).toContain('clientSecretRef:')
     expect(patch).not.toMatch(/clientSecret:\s/u)
-    expect(patch).toContain('trustedHosts:')
-    expect(patch).toContain('printUrl: false')
-    expect(patch).toContain('openBrowser: false')
+    expect(patch).toContain('--trusted-host dsh.example')
+    expect(patch).toContain('- id: web-runtime\n  config:\n    printUrl: false')
+    expect(patch).toContain('--no-open does')
   })
 
   it('routes only exact auth endpoints and gates every other path before one reverse proxy', () => {

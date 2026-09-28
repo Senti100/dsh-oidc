@@ -12,7 +12,7 @@ DSH 0.1.5-rc.1 has one process-wide operator peer. Every admitted user shares th
 
 ## Compatibility
 
-The first candidate is intentionally pinned to the public DSH `0.1.5-rc.1` package interfaces. DSH APIs are pre-stable; test and release a separate adapter/version before widening these exact peer versions. Current upstream `0.1.7-alpha.2` remains a future compatibility lane, not an implied supported version.
+The first candidate is intentionally pinned to the public DSH `0.1.5-rc.1` package interfaces. DSH APIs are pre-stable; test and release a separate adapter/version before widening these exact peer versions. Later upstream releases are a future compatibility lane, not implied supported versions.
 
 ## Configuration
 
@@ -54,7 +54,7 @@ npm ci
 npm run check
 ```
 
-`npm run check` runs formatting, lint, strict TypeScript, coverage-gated tests, build, package-content inspection, and a local secret-pattern scan. `npm run test:acceptance:full-profile` is the separate disposable release gate: it requires exact Caddy v2.10.2 through `DSH_OIDC_CADDY_BIN`, Corepack, and the lock-pinned Playwright browser. The gate packs this repository, installs that tarball through the public `dsh plugin --profile web add --save-exact` command, boots the published DSH `0.1.5-rc.1` Web profile, and exercises synthetic OIDC/TLS plus the **shipped Caddy example** with the real frontend, API, upload, native-cookie `Secure` flag, and WebSocket owners. `/events` is only a reserved no-owner admission probe in RC1; it is not claimed as DSH SSE coverage. The harness uses no live provider, DSH home, proxy, DNS, or credentials and removes its private temporary run root.
+`npm run check` runs formatting, lint, strict TypeScript, coverage-gated tests, build, package-content inspection, and a local secret-pattern scan. `npm run test:acceptance:full-profile` is the separate disposable release gate: it requires exact Caddy v2.10.2 through `DSH_OIDC_CADDY_BIN`, Corepack, and the lock-pinned Playwright browser. The gate packs this repository, installs that tarball through the public `dsh plugin --profile web add --save-exact` command, boots the published DSH `0.1.5-rc.1` Web profile, and exercises synthetic OIDC/TLS plus the **shipped Caddy example** with the real frontend, API, upload, native-cookie `Secure` flag, and WebSocket owners. `npm run test:public-install` separately initializes **`web-oidc`** from the Web template, installs the local tarball with exact RC1 peer overrides, boots with synthetic OIDC settings in process environment, verifies an unauthenticated `/auth/check` 401, checks no bootstrap bearer URL was printed, and tears down its temporary home. CI runs both. `/events` is only a reserved no-owner admission probe in RC1; it is not claimed as DSH SSE coverage. Neither harness uses a live provider, production DSH home, proxy, DNS, or credentials.
 
 ## Non-goals
 

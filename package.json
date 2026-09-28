@@ -39,6 +39,7 @@
     "test:coverage": "vitest run --coverage",
     "test:acceptance": "npm run test:acceptance:full-profile",
     "test:acceptance:full-profile": "node scripts/integration-harness.mjs",
+    "test:public-install": "python3 -B scripts/verify-public-install.py",
     "pack:check": "node scripts/check-pack.mjs",
     "secret:scan": "node scripts/secret-scan.mjs",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run pack:check && npm run secret:scan"

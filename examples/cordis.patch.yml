@@ -1,10 +1,12 @@
-# Add this top-level patch entry to the shipped DSH Web profile. The Base and
-# Web bundles continue to own the native credentials, webServer, runtime, and
-# Connection rows; do not replace them. In the shipped bundle that owner is
-# `name: '@deepseek-ai/dsh-client-connection'`; supply `trustedHosts:` with the
-# public authority through `dsh web --trusted-host`. The acceptance lane's Web
-# CLI flags correspond to `host: 127.0.0.1`, `printUrl: false`, and
-# `openBrowser: false` without inventing a replacement runtime row.
+# Add this top-level patch to a separate DSH Web profile. The Base and Web
+# bundles keep ownership of credentials, webServer, runtime, and Connection.
+# DSH Web 0.1.5-rc.1 prints a bearer bootstrap URL by default; --no-open does
+# NOT suppress it. Override the shipped `web-runtime` row before exposure.
+# Connection is still owned by `@deepseek-ai/dsh-client-connection`; supply the
+# public authority with `dsh --profile web-oidc --trusted-host dsh.example`.
+- id: web-runtime
+  config:
+    printUrl: false
 - insert:
     - id: senti100-oidc
       name: '@senti100/dsh-oidc'

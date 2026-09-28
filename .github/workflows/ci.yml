@@ -51,3 +51,5 @@ jobs:
         env:
           DSH_OIDC_CADDY_BIN: ${{ runner.temp }}/caddy
         run: npm run test:acceptance:full-profile
+      - name: Reproduce separate web-oidc install and hidden bootstrap URL
+        run: npm run test:public-install
