@@ -8,6 +8,7 @@ contain a temporary bearer URL if a regression re-enables URL printing.
 
 from __future__ import annotations
 
+import ast
 import http.client
 import json
 import os
@@ -25,6 +26,12 @@ PEERS = {
     "@deepseek-ai/dsh-credentials": "0.1.5-rc.1",
     "@deepseek-ai/dsh-host-webserver": "0.1.5-rc.1",
 }
+
+
+def require(condition: bool, message: str) -> None:
+    """Release gates must not disappear under PYTHONOPTIMIZE / python -O."""
+    if not condition:
+        raise RuntimeError(message)
 
 
 def run(args: list[str], cwd: Path, env: dict[str, str]) -> str:
@@ -50,10 +57,12 @@ def check_route(port: int) -> bool:
 
 
 def main() -> None:
+    source_tree = ast.parse(Path(__file__).read_text())
+    require(not any(isinstance(node, ast.Assert) for node in ast.walk(source_tree)), "release smoke must use explicit failures, not optimized-away assertions")
     fixture = json.loads((REPO / "tests/fixtures/full-profile/package.json").read_text())
     overrides = fixture["pnpm"]["overrides"]
-    assert len(overrides) == 236
-    assert CLI.is_file(), "install the locked full-profile fixture before this smoke"
+    require(len(overrides) == 236, "full-profile override count changed")
+    require(CLI.is_file(), "install the locked full-profile fixture before this smoke")
     with tempfile.TemporaryDirectory(prefix="dsh-oidc-public-install-") as scratch:
         root = Path(scratch)
         home = root / "home"
@@ -63,8 +72,8 @@ def main() -> None:
         profile = home / "profiles/web-oidc"
         manifest = profile / "package.json"
         package = json.loads(manifest.read_text())
-        assert package["name"] == "dsh-profile-web-oidc"
-        assert not package.get("dependencies") and not package.get("pnpm")
+        require(package["name"] == "dsh-profile-web-oidc", "wrong isolated profile")
+        require(not package.get("dependencies") and not package.get("pnpm"), "profile already customized")
         package["pnpm"] = {"overrides": overrides}
         manifest.write_text(json.dumps(package, indent=2) + "\n")
         manifest.chmod(0o600)
@@ -73,7 +82,7 @@ def main() -> None:
         run([str(CLI), "plugin", "--profile", "web-oidc", "add", "--save-exact", *(f"{name}@{version}" for name, version in PEERS.items())], root, env)
         patch = profile / "cordis.patch.yml"
         uncommented = [line.strip() for line in patch.read_text().splitlines() if line.strip() and not line.lstrip().startswith("#")]
-        assert uncommented == ["[]"], "refusing to replace a customized profile patch"
+        require(uncommented == ["[]"], "refusing to replace a customized profile patch")
         patch.write_bytes((REPO / "examples/cordis.patch.yml").read_bytes())
         patch.chmod(0o600)
         synthetic_secret = "stub"
@@ -86,11 +95,11 @@ def main() -> None:
         )
         env["DSH_OIDC_CLIENT_SECRET"] = synthetic_secret
         dump = run([str(CLI), "--profile", "web-oidc", "--dump-config"], root, env)
-        assert "senti100-oidc" in dump and "DSH_OIDC_CLIENT_SECRET_REF" in dump
-        assert synthetic_secret not in dump
+        require("senti100-oidc" in dump and "DSH_OIDC_CLIENT_SECRET_REF" in dump, "public patch not loaded")
+        require(synthetic_secret not in dump, "synthetic credential appeared in config output")
         installed = json.loads(manifest.read_text())["dependencies"]
-        assert installed["@senti100/dsh-oidc"].startswith("file:")
-        assert all(installed[name] == version for name, version in PEERS.items())
+        require(installed["@senti100/dsh-oidc"].startswith("file:"), "plugin was not installed from local tarball")
+        require(all(installed[name] == version for name, version in PEERS.items()), "exact RC1 peers not installed")
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
@@ -113,10 +122,10 @@ def main() -> None:
             except subprocess.TimeoutExpired:
                 child.kill()
                 output, _ = child.communicate(timeout=5)
-        assert admitted, "OIDC auth-check route did not become ready (startup output withheld)"
-        assert b"/?token=" not in output, "native bootstrap bearer URL printed despite the public patch"
-        assert child.poll() is not None
-        assert not check_route(port), "disposable DSH listener survived termination"
+        require(admitted, "OIDC auth-check route did not become ready (startup output withheld)")
+        require(b"/?token=" not in output, "native bootstrap bearer URL printed despite the public patch")
+        require(child.poll() is not None, "disposable DSH process survived termination")
+        require(not check_route(port), "disposable DSH listener survived termination")
     print("public web-oidc install PASS: 236 overrides, exact RC1 peers, auth-check 401, no printed bearer URL, clean teardown")
 
 
