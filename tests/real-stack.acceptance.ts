@@ -259,49 +259,35 @@ async function curl(host: string, url: string, extra: readonly string[] = []): P
 }
 
 function caddyfile(upstreamPort?: number): string {
-  const application =
-    upstreamPort === undefined
-      ? 'respond "DSH starting" 503'
-      : `request_header -Authorization
-  request_header -Proxy-Authorization
-  request_header -X-Dsh-Oidc-Client-Ip
-  request_header -X-Forwarded-User
-  request_header -X-Forwarded-Email
-  request_header -X-Auth-Request-User
-  request_header -X-Auth-Request-Email
-  request_header -X-Remote-User
-  request_header -Remote-User
-  handle /auth/* {
-    reverse_proxy 127.0.0.1:${String(upstreamPort)} {
-      header_up Host dsh.test:${String(publicPort)}
-      header_up X-Dsh-Oidc-Client-Ip {remote_host}
-    }
-  }
-  handle {
-    forward_auth 127.0.0.1:${String(upstreamPort)} {
-      uri /auth/check
-      header_up Host dsh.test:${String(publicPort)}
-      header_up X-Dsh-Oidc-Client-Ip {remote_host}
-      header_up -Connection
-      header_up -Upgrade
-    }
-    reverse_proxy 127.0.0.1:${String(upstreamPort)} {
-      header_up Host dsh.test:${String(publicPort)}
-    }
-  }`
-  return `{
+  const providerSite = `https://127.0.0.1:${String(publicPort)} {
+  tls internal
+  reverse_proxy 127.0.0.1:${String(providerPort)}
+}\n`
+  if (upstreamPort === undefined)
+    return `{
   admin 127.0.0.1:${String(adminPort)}
   auto_https disable_redirects
 }
-https://127.0.0.1:${String(publicPort)} {
+${providerSite}https://dsh.test:${String(publicPort)} {
   tls internal
-  reverse_proxy 127.0.0.1:${String(providerPort)}
-}
-https://dsh.test:${String(publicPort)} {
-  tls internal
-  ${application}
-}
-`
+  respond "DSH starting" 503
+}\n`
+  // Exercise the distributable proxy recipe itself, not a second hand-maintained
+  // copy that can silently diverge from public installation instructions.
+  const published = readFileSync(new URL('../examples/Caddyfile', import.meta.url), 'utf8')
+    .replace('{\n\tauto_https disable_redirects\n}\n', '')
+    .replace('https://dsh.example {', `https://dsh.test:${String(publicPort)} {\n\ttls internal`)
+    .replaceAll('127.0.0.1:3080', `127.0.0.1:${String(upstreamPort)}`)
+    .replaceAll('header_up Host {host}', `header_up Host dsh.test:${String(publicPort)}`)
+  if (
+    published.includes('https://dsh.example') ||
+    published.includes('127.0.0.1:3080') ||
+    published.includes('header_up Host {host}') ||
+    !published.includes('tls internal') ||
+    !published.includes('header_up -Upgrade')
+  )
+    throw new Error('published Caddy recipe no longer matches acceptance topology')
+  return `{\n  admin 127.0.0.1:${String(adminPort)}\n  auto_https disable_redirects\n}\n${providerSite}${published}`
 }
 
 async function waitForCaddy(): Promise<void> {
@@ -762,6 +748,8 @@ describe('published DSH 0.1.5-rc.1 full Web profile', { concurrent: false }, () 
       const response = await page.goto(publicOrigin + path, { waitUntil: 'domcontentloaded' })
       expect(response?.status(), path).toBe(401)
     }
+    // Only the four registered OIDC paths may bypass the outer admission gate.
+    expect((await page.goto(publicOrigin + '/auth/not-registered'))?.status()).toBe(404)
     const upload = await curl(
       'dsh.test',
       `${publicOrigin}/api/session/uploadFileBinary?sessionId=x`,
@@ -801,7 +789,9 @@ describe('published DSH 0.1.5-rc.1 full Web profile', { concurrent: false }, () 
     expect(await page.title()).toBe('DeepSeek Harness')
     const cookies = await context.cookies(publicOrigin)
     expect(cookies.some((cookie) => cookie.name === '__Host-dsh-oidc-session')).toBe(true)
-    expect(cookies.some((cookie) => cookie.name !== '__Host-dsh-oidc-session')).toBe(true)
+    const nativeCookies = cookies.filter((cookie) => cookie.name.startsWith('dsh-auth-'))
+    expect(nativeCookies.length).toBeGreaterThan(0)
+    expect(nativeCookies.every((cookie) => cookie.secure)).toBe(true)
     expect(clientSecretUsed).toBe(true)
 
     const ownerResults = await page.evaluate(

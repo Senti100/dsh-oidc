@@ -1,0 +1,79 @@
+# Install and operate DSH OIDC (Web, 0.1.5-rc.1)
+
+This is a **source-checkout + local-tarball** installation guide. `@senti100/dsh-oidc` is not assumed to exist on npm. The public GitHub checkout includes the exact RC1 dependency-override fixture; the plugin tarball alone does not. Use a disposable DSH home first, then back up any real home and proxy configuration before repeating the process. Do not copy provider exports, session cookies, client secrets, or real subject IDs into a Git checkout or support ticket.
+
+## Prerequisites and topology
+
+- Node 22.19+ within Node 22, Corepack with pnpm 10.18.3, the DSH 0.1.5-rc.1 CLI and shipped `web` template, Caddy 2.10.2 (the acceptance version; validate other versions separately), a TLS certificate, and a reachable OIDC issuer with authorization-code + PKCE S256 support.
+- A single loopback-bound DSH process/home behind the reverse proxy. The application shares **one operator authority** among all admitted identities; use one process/home per identity if isolation is needed.
+- An HTTPS public origin with no HTTP path on which a browser could send DSH's native cookie. The Caddy example disables automatic redirects, but an HTTPS site declaration **does not close TCP/80**. Use an isolated IP/edge firewall or equivalent network boundary, and DNS-01 or operator-managed TLS certificates that do not need HTTP-01. Verify from outside the host that TCP/80 for that address is unavailable. When an IP is shared with HTTP sites, do **not** call it strictly HTTPS-only. The example's `Set-Cookie` rewrite protects newly minted native cookies, not cookies already stored without `Secure`.
+- Public hostname must be the exact fixed `publicOrigin` and a DSH `--trusted-host` authority. The DSH listener must not be reachable directly from other machines.
+
+## Build and create a separate compatible profile
+
+Run from this checkout on the DSH host with a disposable `DSH_HOME` first. The commands below **do not** alter an existing `web` profile:
+
+```sh
+export DSH_HOME=/path/to/isolated-dsh-home
+npm ci
+npm run check
+corepack enable
+corepack prepare pnpm@10.18.3 --activate
+# The flag initializes the shipped Web template and exits without opening a listener.
+dsh --profile web-oidc --from-default-profile web --dump-config >/dev/null
+# Install the exact 236-override compatibility fixture into the fresh profile.
+python3 - "$DSH_HOME/profiles/web-oidc/package.json" <<'PY'
+import json, pathlib, sys
+profile = pathlib.Path(sys.argv[1])
+fixture = json.loads(pathlib.Path('tests/fixtures/full-profile/package.json').read_text())
+current = json.loads(profile.read_text())
+assert current['name'] == 'dsh-profile-web-oidc'
+assert not current.get('dependencies') and not current.get('pnpm')
+overrides = fixture['pnpm']['overrides']
+assert len(overrides) == 236
+assert sum(n == '@deepseek-ai/dsh' or n.startswith('@deepseek-ai/dsh-') for n in overrides) == 231
+current['pnpm'] = {'overrides': overrides}
+profile.write_text(json.dumps(current, indent=2) + '\n')
+profile.chmod(0o600)
+PY
+TARBALL="$(npm pack --silent)"
+dsh plugin --profile web-oidc add --save-exact "file:$PWD/$TARBALL"
+dsh plugin --profile web-oidc add --save-exact \
+  @deepseek-ai/cordis@4.0.2 \
+  @deepseek-ai/dsh-client-connection@0.1.5-rc.1 \
+  @deepseek-ai/dsh-credentials@0.1.5-rc.1 \
+  @deepseek-ai/dsh-host-webserver@0.1.5-rc.1
+# Fresh profile only: fail closed if a patch was already customized.
+python3 - "$DSH_HOME/profiles/web-oidc/cordis.patch.yml" <<'PY'
+import pathlib, sys
+assert [line.strip() for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.strip() and not line.lstrip().startswith('#')] == ['[]'], 'profile patch is not empty'
+PY
+install -m 600 examples/cordis.patch.yml "$DSH_HOME/profiles/web-oidc/cordis.patch.yml"
+```
+
+The override fixture is scoped to this pre-stable DSH release, **not** a general way to downgrade another working profile. Confirm the four exact effective peer versions and that DSH composes the `web-oidc` profile; if either fails, stop instead of editing your existing profile or bypassing the plugin's compatibility check. Keep the tarball available for subsequent profile operations; it is ignored by Git.
+
+## Configure the OIDC provider and credentials
+
+Create a confidential OIDC client at your provider with an **exact** redirect URI `https://dsh.example/auth/callback` (substitute your origin), authorization-code flow, and `openid profile email` scopes. Choose an explicit subject allowlist from the provider's `(issuer, sub)` identity; do not assume email alone gives stable identity. Bind admission at the provider **and** in `DSH_OIDC_ALLOWED_SUBJECTS`. The example reference `DSH_OIDC_CLIENT_SECRET_REF=DSH_OIDC_CLIENT_SECRET` names a credential, not its value. Never put its value in `.env.example`, the Cordis patch, command arguments, Caddy, or the Git repository. The [DSH credentials guide](https://deepseekdocs.com/en/docs/user-guide/credentials) documents precedence: inherited process environment, managed `$DSH_HOME/.credentials.yaml`, then project and user `.env` fallback; an inherited process variable masks stored credentials until restart.
+
+For a fresh isolated home, create a restricted user fallback file with `test ! -e "$DSH_HOME/.env" && install -m 600 .env.example "$DSH_HOME/.env"`, then edit **that home-local file privately**: replace the illustrative issuer, client ID, origin, subject tuple, and add `DSH_OIDC_CLIENT_SECRET` with the real client secret. Restrict the home directory, encrypt access-controlled backups, and exclude it from logs/uploads and public Git staging according to your secret policy. Alternatively provision the reference in the managed DSH credential provider before login, or inject it through a dedicated process secret manager. The public `.env.example` intentionally has no secret-value line. Keep `DSH_OIDC_ALLOWED_SUBJECTS` as **one quoted JSON value**; its issuer must exactly match discovery and the provider callback must exactly match `publicOrigin + /auth/callback`. Do not print resolved config or source a secret file into a shared shell.
+
+Start `dsh --profile web-oidc --no-open --host 127.0.0.1 --port 3080 --trusted-host dsh.example`. Disable URL printing in your service composition (the native bootstrap URL briefly contains a bearer token). The Web CLI `--no-open` suppresses opening a browser but does **not** itself promise to suppress all URL logging; check your version/service startup output and prevent URL logging before exposing it. If your DSH image lacks a working pnpm/Corepack toolchain, supply pinned pnpm in a separate reproducible derivative image rather than changing a serving profile in place.
+
+## Proxy and browser acceptance
+
+Adapt and validate [`examples/Caddyfile`](../examples/Caddyfile) against the Caddy binary and actual certificate/network layout before using it. Replace `dsh.example`, upstream port, and TLS provisioner. The example:
+
+- passes only four **exact** `/auth` routes to the plugin and rejects unmatched `/auth/*` routes;
+- strips client-supplied identity and address headers, then gates every other path with `/auth/check`;
+- removes `Connection`/`Upgrade` only on the auth pre-check (the application proxy still upgrades WebSockets);
+- makes newly issued `dsh-auth-*` cookies `Secure`, including deletion and already-Secure cases, and redacts URL queries from access logs.
+
+Keep a backup/rollback of the prior proxy configuration. Do not turn on public routing until DSH and the provider are ready. With no browser cookies, check `/` and `/api` return 401, `/auth/not-registered` returns 404, and `HEAD /auth/login` is state-free. Open `/auth/login` in a real browser, sign in, verify the clean DSH root, an API/workspace read and write, a native `dsh-auth-*` browser cookie marked **Secure**, and a successful `/api/remote.mux` WebSocket (no persistent “Reconnecting”). Finally use the logout confirmation and POST, then prove a stale native cookie cannot reach protected paths. A model catalog being empty or a model still loading does not by itself diagnose the WebSocket. Do not report browser acceptance based only on unauthenticated HTTP smoke.
+
+## Rollback and limitations
+
+Preserve the original DSH profile/home, image, and proxy configuration. On failure, restore the previous proxy and application pair together under the site's normal change control, verify its health, and leave the new profile disabled; do not delete the shared home or rotate the native signing key as a casual rollback. Restart of the plugin invalidates its memory-local OIDC sessions. Provider-side policy revocation is not immediate for an existing local session; it takes effect at idle/absolute expiry or restart. Logout removes the outer session, not necessarily the native cookie, so the proxy gate remains mandatory. An HTTP redirect, HSTS, or a `Secure` rewrite cannot retroactively prevent an already-stored non-`Secure` cookie from being sent on a first HTTP request.
+
+The full-profile release gate (`DSH_OIDC_CADDY_BIN=/path/to/caddy-2.10.2 npm run test:acceptance:full-profile`) exercises a synthetic provider and real RC1 Web profile against the **shipped** Caddy recipe. It does not certify another Caddy version, your provider, your firewall, or a browser session in your environment.

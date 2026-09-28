@@ -13,8 +13,8 @@ Assets are OIDC credentials, authorization transactions, local sessions, DSH's n
 5. Every configured policy category is required. Empty configured lists, malformed identity/groups/claims, and exact-match failures deny.
 6. Local session and transaction bearers are independent 256-bit values indexed by hash, memory-only, bounded, and expired by cleanup.
 7. Logout state change requires the local session, exact public Origin, content type, and session-bound CSRF value.
-8. The reverse proxy admits `/auth/*` directly but requires `/auth/check` success for every other HTTP and upgrade path. It strips client authorization/proxy-authorization/identity/address aliases and supplies the login-limiter address from `{remote_host}`. The plugin accepts that header only over a loopback socket. Logout therefore defeats stale DSH cookies.
-9. DSH remains loopback-only. HTTPS-only reachability/HSTS protects its native non-Secure cookie.
+8. The reverse proxy admits only the four exact `/auth/login`, `/auth/callback`, `/auth/check`, and `/auth/logout` paths directly; unmatched `/auth/*` denies. Every other HTTP and upgrade path requires `/auth/check` success. It strips WebSocket upgrade headers **on the auth-check subrequest only** and preserves them to the application. It strips client authorization/proxy-authorization/identity/address aliases and supplies the login-limiter address from `{remote_host}`. The plugin accepts that header only over a loopback socket. Logout therefore defeats stale DSH cookies.
+9. DSH remains loopback-only. Strict HTTPS-only network reachability protects previously issued non-`Secure` native cookies; a proxy rewrite marks newly issued native cookies `Secure`, but cannot repair existing browser cookies. HSTS/redirects alone do not close a shared TCP/80 path.
 10. All admitted users are equivalent shared operators; no per-user DSH isolation or attribution is claimed.
 
 ## Residual risks

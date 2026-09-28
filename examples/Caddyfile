@@ -1,6 +1,18 @@
-# Illustrative synthetic hostname only. Do not enable an HTTP listener for this host.
+# Illustrative HTTPS-only host. DNS-01 or operator-managed certificates avoid an
+# HTTP-01 challenge listener; additionally block TCP/80 for this host at the
+# network edge. A shared IP with another HTTP site is not strictly HTTPS-only.
+{
+	auto_https disable_redirects
+}
 https://dsh.example {
-	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	# DSH 0.1.5-rc.1's native cookie does not set Secure. Normalize an
+	# existing Secure attribute before appending exactly once to dsh-auth-*.
+	# Caddy cannot change cookies that a browser already holds.
+	header {
+		>Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		>Set-Cookie "^(dsh-auth-[^\r\n]*?);[ \t]*Secure((?:;[^\r\n]*)?)$" "$1$2"
+		>Set-Cookie "^(dsh-auth-[^\r\n]*)$" "$1; Secure"
+	}
 
 	# Strip browser-supplied credentials, proxy credentials, the dedicated client
 	# address, and common identity aliases before any handler runs.
@@ -14,24 +26,32 @@ https://dsh.example {
 	request_header -X-Remote-User
 	request_header -Remote-User
 
-	# Authentication endpoints are reachable before a session exists. Caddy
-	# replaces the stripped address with the connection-observed remote host.
-	handle /auth/* {
-		reverse_proxy 127.0.0.1:3080 {
-			header_up Host {host}
-			header_up X-Dsh-Oidc-Client-Ip {remote_host}
+	@oidcEndpoints path /auth/login /auth/callback /auth/check /auth/logout
+	route {
+		# Only the four registered OIDC endpoints bypass admission.
+		handle @oidcEndpoints {
+			reverse_proxy 127.0.0.1:3080 {
+				header_up Host {host}
+				header_up X-Dsh-Oidc-Client-Ip {remote_host}
+			}
 		}
-	}
-
-	# Mandatory guard for root, assets, API, uploads, streams, and upgrades.
-	handle {
-		forward_auth 127.0.0.1:3080 {
-			uri /auth/check
-			header_up Host {host}
-			header_up X-Dsh-Oidc-Client-Ip {remote_host}
+		# Do not let a future DSH route under /auth/ inherit the exception.
+		handle /auth/* {
+			respond "not found" 404
 		}
-		reverse_proxy 127.0.0.1:3080 {
-			header_up Host {host}
+		handle {
+			forward_auth 127.0.0.1:3080 {
+				uri /auth/check
+				# Strip upgrade headers on this GET-only *auth subrequest*.
+				# Preserve them on the application proxy below for WebSockets.
+				header_up -Connection
+				header_up -Upgrade
+				header_up Host {host}
+				header_up X-Dsh-Oidc-Client-Ip {remote_host}
+			}
+			reverse_proxy 127.0.0.1:3080 {
+				header_up Host {host}
+			}
 		}
 	}
 

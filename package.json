@@ -26,6 +26,7 @@
     "SECURITY.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
+    ".env.example",
     "docs",
     "examples"
   ],

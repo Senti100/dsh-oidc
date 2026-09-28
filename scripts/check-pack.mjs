@@ -3,9 +3,10 @@ import { chmodSync, lstatSync, mkdtempSync, readFileSync, rmSync } from 'node:fs
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-// R1 intentionally revises the former 17-file package to 18 files by adding the
-// generated public runtime-compatibility declaration.
+// Pin the exact distributable inventory, including the synthetic environment
+// example and the external deployment guide alongside the runtime declarations.
 const expectedFiles = [
+  '.env.example',
   'LICENSE',
   'README.md',
   'SECURITY.md',
@@ -19,6 +20,7 @@ const expectedFiles = [
   'dist/oidc.d.ts',
   'dist/policy.d.ts',
   'dist/state.d.ts',
+  'docs/deployment.md',
   'docs/interoperability.md',
   'docs/threat-model.md',
   'examples/Caddyfile',
