@@ -21,10 +21,10 @@ import time
 REPO = Path(__file__).resolve().parents[1]
 CLI = REPO / "tests/fixtures/full-profile/node_modules/.bin/dsh"
 PEERS = {
-    "@deepseek-ai/cordis": "4.0.2",
-    "@deepseek-ai/dsh-client-connection": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-credentials": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-host-webserver": "0.1.5-rc.1",
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-client-connection": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-host-webserver": "0.2.0-rc.2",
 }
 
 
@@ -61,7 +61,7 @@ def main() -> None:
     require(not any(isinstance(node, ast.Assert) for node in ast.walk(source_tree)), "release smoke must use explicit failures, not optimized-away assertions")
     fixture = json.loads((REPO / "tests/fixtures/full-profile/package.json").read_text())
     overrides = fixture["pnpm"]["overrides"]
-    require(len(overrides) == 236, "full-profile override count changed")
+    require(len(overrides) == 290, "full-profile override count changed")
     require(CLI.is_file(), "install the locked full-profile fixture before this smoke")
     with tempfile.TemporaryDirectory(prefix="dsh-oidc-public-install-") as scratch:
         root = Path(scratch)
@@ -99,7 +99,23 @@ def main() -> None:
         require(synthetic_secret not in dump, "synthetic credential appeared in config output")
         installed = json.loads(manifest.read_text())["dependencies"]
         require(installed["@senti100/dsh-oidc"].startswith("file:"), "plugin was not installed from local tarball")
-        require(all(installed[name] == version for name, version in PEERS.items()), "exact RC1 peers not installed")
+        require(all(installed[name] == version for name, version in PEERS.items()), "exact 0.2.0-rc.2 peers not installed")
+        # Check actual resolution, not just dependency strings (stale symlinks can disagree).
+        resolution = run(["node", "--input-type=module", "-e", """
+import { createRequire } from 'node:module';
+import { readFileSync, realpathSync } from 'node:fs';
+const root = createRequire(process.cwd() + '/package.json');
+const plugin = createRequire(root.resolve('@senti100/dsh-oidc/package.json'));
+const names = JSON.parse(process.argv[1]);
+console.log(JSON.stringify(Object.fromEntries(names.map(name => {
+  const path = plugin.resolve(name + '/package.json');
+  return [name, { version: JSON.parse(readFileSync(path)).version, path: realpathSync(path) }];
+}))));
+""", json.dumps(list(PEERS))], profile, env)
+        resolved = json.loads(resolution)
+        require(all(resolved[name]["version"] == version for name, version in PEERS.items()), "effective runtime peer mismatch")
+        require(all(Path(item["path"]).is_relative_to(home) for item in resolved.values()), "peer symlink escaped disposable home")
+
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
@@ -126,7 +142,7 @@ def main() -> None:
         require(b"/?token=" not in output, "native bootstrap bearer URL printed despite the public patch")
         require(child.poll() is not None, "disposable DSH process survived termination")
         require(not check_route(port), "disposable DSH listener survived termination")
-    print("public web-oidc install PASS: 236 overrides, exact RC1 peers, auth-check 401, no printed bearer URL, clean teardown")
+    print("public web-oidc install PASS: 290 overrides, exact 0.2.0-rc.2 peers, auth-check 401, no printed bearer URL, clean teardown")
 
 
 if __name__ == "__main__":

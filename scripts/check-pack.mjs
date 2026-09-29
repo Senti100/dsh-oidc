@@ -23,6 +23,7 @@ const expectedFiles = [
   'docs/deployment.md',
   'docs/interoperability.md',
   'docs/threat-model.md',
+  'docs/upgrade-0.2.md',
   'examples/Caddyfile',
   'examples/cordis.patch.yml',
   'package.json',

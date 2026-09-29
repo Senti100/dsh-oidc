@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
 const expectedCaddy = 'v2.10.2'
-const expectedDsh = '0.1.5-rc.1'
+const expectedDsh = '0.2.0-rc.2'
 const fixture = resolve('tests/fixtures/full-profile')
 const corepack = process.env.DSH_OIDC_COREPACK_BIN ?? 'corepack'
 const caddy = process.env.DSH_OIDC_CADDY_BIN
@@ -103,9 +103,9 @@ try {
   const overrideCount = Object.keys(overrides).filter(
     (name) => name === '@deepseek-ai/dsh' || name.startsWith('@deepseek-ai/dsh-'),
   ).length
-  if (overrideCount !== 231) {
+  if (overrideCount !== 278) {
     throw new Error(
-      `full-profile override closure changed: expected 231, observed ${String(overrideCount)}`,
+      `full-profile override closure changed: expected 278, observed ${String(overrideCount)}`,
     )
   }
   const environment = {
@@ -132,10 +132,10 @@ try {
       'web',
       'add',
       '--save-exact',
-      '@deepseek-ai/cordis@4.0.2',
-      '@deepseek-ai/dsh-client-connection@0.1.5-rc.1',
-      '@deepseek-ai/dsh-credentials@0.1.5-rc.1',
-      '@deepseek-ai/dsh-host-webserver@0.1.5-rc.1',
+      '@deepseek-ai/cordis@4.0.4',
+      '@deepseek-ai/dsh-client-connection@0.2.0-rc.2',
+      '@deepseek-ai/dsh-credentials@0.2.0-rc.2',
+      '@deepseek-ai/dsh-host-webserver@0.2.0-rc.2',
     ],
     { env: environment },
   )
@@ -153,7 +153,7 @@ try {
   if (residue.length !== 0)
     throw new Error(`acceptance stack residue remained: ${residue.join(', ')}`)
   console.log(
-    `full-profile acceptance passed: DSH ${expectedDsh}; overrides=${String(overrideCount)}; packed plugin loaded; browser scenarios=5; failure cleanup=pass; ${caddyVersionOutput}`,
+    `full-profile acceptance passed: DSH ${expectedDsh}; overrides=${String(overrideCount)}; packed plugin loaded; browser scenarios=6; failure cleanup=pass; ${caddyVersionOutput}`,
   )
 } finally {
   rmSync(runRoot, { recursive: true, force: true })

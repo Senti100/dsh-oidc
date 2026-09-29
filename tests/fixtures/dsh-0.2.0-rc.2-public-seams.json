@@ -1,0 +1,22 @@
+{
+  "upstreamVersion": "0.2.0-rc.2",
+  "sourceRevision": "639ed015397290b3745d163aafe02ffee4aa3f84",
+  "priorRevision": "183f08e9c6dde7e36cd2318eaee70b0da08fb35e",
+  "runtimePackages": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-client-connection": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-host-webserver": "0.2.0-rc.2"
+  },
+  "proxyRequired": true,
+  "changes": {
+    "authenticatedUrl": "Preserves caller path/query/fragment; plugin continues passing only validated clean HTTPS root.",
+    "nativeRedirect": "303 Location changed from / to ./; browser acceptance must resolve the clean root.",
+    "admission": "admit(request) returns operator PeerAdmission after existing Host/Origin/browser authentication; not an external OIDC authenticator.",
+    "requestEvent": "connection/request waterfall is after native authentication and covers shared API HTTP, not every owner or WebSocket.",
+    "websocket": "Gateway uses admit(request) and appReady before mux registration. Proxy check remains mandatory.",
+    "credentials": "CredentialProvider.resolve interface unchanged; account-platform additions do not authenticate Web OIDC users.",
+    "webServer": "Exact route registration/disposal unchanged; multipart compression added.",
+    "cordis": "4.0.4 and schemastery 3.18.4 replace prior 4.0.2/3.18.2."
+  }
+}

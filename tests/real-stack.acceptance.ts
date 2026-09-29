@@ -98,6 +98,7 @@ let caddyStderr = ''
 let dshOutput = ''
 let clientSecret = ''
 let clientSecretUsed = false
+let providerSubject = 'synthetic-operator'
 let realAssetPath = ''
 let nativeCookieHeader = ''
 const issuedCodes = new Map<string, { challenge: string; nonce: string }>()
@@ -152,7 +153,7 @@ function attestDshStore(store: string, label: string): Map<string, string> {
       if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') {
         throw new Error(`invalid installed DSH manifest: ${manifestPath}`)
       }
-      if (manifest.version !== '0.1.5-rc.1') {
+      if (manifest.version !== '0.2.0-rc.2') {
         throw new Error(`${label} DSH closure drift: ${manifest.name}@${manifest.version}`)
       }
       observed.set(manifest.name, manifest.version)
@@ -173,7 +174,7 @@ function attestProfileDshClosure(): number {
     const name = match[1]
     const version = match[2]?.split('(', 1)[0]
     if (name === undefined || version === undefined) continue
-    if (version !== '0.1.5-rc.1') {
+    if (version !== '0.2.0-rc.2') {
       throw new Error(`profile lock DSH closure drift: ${name}@${version}`)
     }
     observed.set(name, version)
@@ -194,7 +195,7 @@ function attestProfileDshClosure(): number {
     if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') {
       throw new Error(`invalid profile DSH manifest: ${manifestPath}`)
     }
-    if (manifest.version !== '0.1.5-rc.1') {
+    if (manifest.version !== '0.2.0-rc.2') {
       throw new Error(`profile installed DSH closure drift: ${manifest.name}@${manifest.version}`)
     }
     installedCount += 1
@@ -267,6 +268,8 @@ function caddyfile(upstreamPort?: number): string {
     return `{
   admin 127.0.0.1:${String(adminPort)}
   auto_https disable_redirects
+  default_bind 127.0.0.1
+  skip_install_trust
 }
 ${providerSite}https://dsh.test:${String(publicPort)} {
   tls internal
@@ -287,7 +290,7 @@ ${providerSite}https://dsh.test:${String(publicPort)} {
     !published.includes('header_up -Upgrade')
   )
     throw new Error('published Caddy recipe no longer matches acceptance topology')
-  return `{\n  admin 127.0.0.1:${String(adminPort)}\n  auto_https disable_redirects\n}\n${providerSite}${published}`
+  return `{\n  admin 127.0.0.1:${String(adminPort)}\n  auto_https disable_redirects\n  default_bind 127.0.0.1\n  skip_install_trust\n}\n${providerSite}${published}`
 }
 
 async function waitForCaddy(): Promise<void> {
@@ -430,7 +433,7 @@ async function startProvider(): Promise<void> {
         const now = Math.floor(Date.now() / 1000)
         const idToken = await new SignJWT({
           iss: issuer,
-          sub: 'synthetic-operator',
+          sub: providerSubject,
           aud: 'synthetic-client',
           nonce: grant.nonce,
           iat: now,
@@ -481,6 +484,9 @@ async function startDsh(): Promise<void> {
       env: {
         ...process.env,
         DSH_HOME: dshHome,
+        HOME: join(stackRoot, 'user-home'),
+        XDG_CONFIG_HOME: join(stackRoot, 'user-config'),
+        XDG_DATA_HOME: join(stackRoot, 'user-data'),
         DSH_TELEMETRY_DISABLED: '1',
         NODE_EXTRA_CA_CERTS: caPath,
         PATH: `${join(runtime, 'node_modules/.bin')}:${process.env.PATH ?? ''}`,
@@ -624,6 +630,8 @@ async function setupStack(): Promise<void> {
   rmSync(stackRoot, { recursive: true, force: true })
   mkdirSync(stackRoot, { recursive: true, mode: 0o700 })
   chmodSync(stackRoot, 0o700)
+  mkdirSync(join(stackRoot, 'user-home'), { mode: 0o700 })
+  mkdirSync(join(stackRoot, 'workspace'), { mode: 0o700 })
   const closureCount = attestDshClosure()
   if (closureCount.runtime < 200)
     throw new Error(`installed runtime DSH closure was unexpectedly small: ${closureCount.runtime}`)
@@ -735,7 +743,7 @@ beforeAll(async () => {
 
 afterAll(cleanupStack, 20_000)
 
-describe('published DSH 0.1.5-rc.1 full Web profile', { concurrent: false }, () => {
+describe('published DSH 0.2.0-rc.2 full Web profile', { concurrent: false }, () => {
   it('denies every application owner before outer login', async () => {
     if (page === undefined) throw new Error('browser page absent')
     for (const path of [
@@ -779,6 +787,23 @@ describe('published DSH 0.1.5-rc.1 full Web profile', { concurrent: false }, () 
     expect(opened).toBe(false)
   })
 
+  it('denies a signed but unallowlisted identity without bootstrapping a native session', async () => {
+    if (browser === undefined) throw new Error('browser absent')
+    const deniedContext = await browser.newContext({ ignoreHTTPSErrors: true })
+    providerSubject = 'synthetic-denied'
+    try {
+      const deniedPage = await deniedContext.newPage()
+      expect((await deniedPage.goto(`${publicOrigin}/auth/login`))?.status()).toBe(403)
+      const cookies = await deniedContext.cookies(publicOrigin)
+      expect(cookies.some((cookie) => cookie.name.startsWith('dsh-auth-'))).toBe(false)
+      expect(cookies.some((cookie) => cookie.name === '__Host-dsh-oidc-session')).toBe(false)
+      expect((await deniedPage.goto(`${publicOrigin}/`))?.status()).toBe(401)
+    } finally {
+      providerSubject = 'synthetic-operator'
+      await deniedContext.close()
+    }
+  })
+
   it('uses the real browser for OIDC, native bootstrap, root, API, upload, and WebSocket', async () => {
     if (page === undefined || context === undefined) throw new Error('browser context absent')
     const response = await page.goto(`${publicOrigin}/auth/login`, {
@@ -791,11 +816,41 @@ describe('published DSH 0.1.5-rc.1 full Web profile', { concurrent: false }, () 
     expect(cookies.some((cookie) => cookie.name === '__Host-dsh-oidc-session')).toBe(true)
     const nativeCookies = cookies.filter((cookie) => cookie.name.startsWith('dsh-auth-'))
     expect(nativeCookies.length).toBeGreaterThan(0)
-    expect(nativeCookies.every((cookie) => cookie.secure)).toBe(true)
+    expect(
+      nativeCookies.every(
+        (cookie) =>
+          cookie.secure && cookie.httpOnly && cookie.sameSite === 'Strict' && cookie.path === '/',
+      ),
+    ).toBe(true)
+    const outer = cookies.find((cookie) => cookie.name === '__Host-dsh-oidc-session')
+    expect(outer).toMatchObject({ secure: true, httpOnly: true, sameSite: 'Lax', path: '/' })
     expect(clientSecretUsed).toBe(true)
 
     const ownerResults = await page.evaluate(
-      async ({ assetPath }) => {
+      async ({ assetPath, workspacePath }) => {
+        async function rpc(method: string, request: Record<string, string>) {
+          const response = await fetch(`/api/${method}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              type: 'client-request',
+              rpcId: `acceptance-${method}`,
+              method,
+              payload: { args: { request } },
+            }),
+          })
+          const envelope = (await response.json()) as {
+            result: { ok: boolean; value: { workspace: { workspaceId: string; path: string } } }
+          }
+          if (!envelope.result.ok)
+            throw new Error(`synthetic workspace RPC failed: ${JSON.stringify(envelope)}`)
+          return envelope.result
+        }
+        const workspace = await rpc('workspace/create', { path: workspacePath })
+        const renamed = await rpc('workspace/rename', {
+          workspaceId: workspace.value.workspace.workspaceId,
+          title: 'OIDC synthetic acceptance',
+        })
         const asset = await fetch(assetPath)
         const missing = await fetch('/api/__acceptance_missing__')
         const upload = await fetch(
@@ -807,6 +862,8 @@ describe('published DSH 0.1.5-rc.1 full Web profile', { concurrent: false }, () 
           },
         )
         return {
+          workspace,
+          renamed,
           assetStatus: asset.status,
           missingStatus: missing.status,
           missingType: missing.headers.get('content-type'),
@@ -816,8 +873,16 @@ describe('published DSH 0.1.5-rc.1 full Web profile', { concurrent: false }, () 
           uploadBody: (await upload.json()) as unknown,
         }
       },
-      { assetPath: realAssetPath },
+      { assetPath: realAssetPath, workspacePath: join(stackRoot, 'workspace') },
     )
+    expect(ownerResults.workspace).toMatchObject({
+      ok: true,
+      value: { workspace: { path: join(stackRoot, 'workspace') } },
+    })
+    expect(ownerResults.renamed).toMatchObject({
+      ok: true,
+      value: { workspace: { title: 'OIDC synthetic acceptance' } },
+    })
     expect(ownerResults.assetStatus).toBe(200)
     expect(ownerResults.missingStatus).toBe(404)
     expect(ownerResults.missingType).not.toContain('text/html')
@@ -866,10 +931,31 @@ describe('published DSH 0.1.5-rc.1 full Web profile', { concurrent: false }, () 
 
     const staleContext = await browser.newContext({ ignoreHTTPSErrors: true })
     try {
-      await staleContext.addCookies(nativeCookies)
+      // Replay both the native cookie and the revoked outer session, not just a missing session.
+      await staleContext.addCookies(allCookies)
       const stalePage = await staleContext.newPage()
       const denied = await stalePage.goto(`${publicOrigin}/`, { waitUntil: 'domcontentloaded' })
       expect(denied?.status()).toBe(401)
+      for (const path of ['/api/__acceptance_missing__', '/api/remote.mux', realAssetPath]) {
+        expect((await stalePage.goto(publicOrigin + path))?.status(), path).toBe(401)
+      }
+      const opened = await stalePage.evaluate(
+        (url) =>
+          new Promise<boolean>((resolve) => {
+            const socket = new WebSocket(url)
+            socket.addEventListener('open', () => {
+              socket.close()
+              resolve(true)
+            })
+            socket.addEventListener('error', () => resolve(false))
+            setTimeout(() => {
+              socket.close()
+              resolve(false)
+            }, 2000)
+          }),
+        `wss://dsh.test:${String(publicPort)}/api/remote.mux`,
+      )
+      expect(opened).toBe(false)
     } finally {
       await staleContext.close()
     }
