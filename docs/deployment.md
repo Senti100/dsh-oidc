@@ -4,7 +4,7 @@ This is a **source-checkout + local-tarball** installation guide. `@senti100/dsh
 
 ## Prerequisites and topology
 
-- Node 22.19+ within Node 22, Corepack with pnpm 10.18.3, the DSH 0.2.0-rc.2 CLI and shipped `web` template, Caddy 2.10.2 (the acceptance version; validate other versions separately), a TLS certificate, and a reachable OIDC issuer with authorization-code + PKCE S256 support.
+- Node 22.19+ within Node 22, Corepack with pnpm 10.34.5, the DSH 0.2.0-rc.2 CLI and shipped `web` template, Caddy 2.10.2 (the acceptance version; validate other versions separately), a TLS certificate, and a reachable OIDC issuer with authorization-code + PKCE S256 support.
 - A single loopback-bound DSH process/home behind the reverse proxy. The application shares **one operator authority** among all admitted identities; use one process/home per identity if isolation is needed.
 - An HTTPS public origin with no HTTP path on which a browser could send DSH's native cookie. The Caddy example disables automatic redirects, but an HTTPS site declaration **does not close TCP/80**. Use an isolated IP/edge firewall or equivalent network boundary, and DNS-01 or operator-managed TLS certificates that do not need HTTP-01. Verify from outside the host that TCP/80 for that address is unavailable. When an IP is shared with HTTP sites, do **not** call it strictly HTTPS-only. The example's `Set-Cookie` rewrite protects newly minted native cookies, not cookies already stored without `Secure`.
 - Public hostname must be the exact fixed `publicOrigin` and a DSH `--trusted-host` authority. The DSH listener must not be reachable directly from other machines.
@@ -15,29 +15,37 @@ Run from this checkout on the DSH host with a disposable `DSH_HOME` first. The c
 
 ```sh
 export DSH_HOME=/path/to/isolated-dsh-home
-npm ci
+export COREPACK_HOME="$DSH_HOME/corepack"
+export COREPACK_DEFAULT_TO_LATEST=0
+npm ci --ignore-scripts
 npm run check
-corepack enable
-corepack prepare pnpm@10.18.3 --activate
-corepack pnpm --dir tests/fixtures/full-profile install --frozen-lockfile
+# No global Corepack defaults or host trust changes.
+test "$(corepack pnpm@10.34.5 --version)" = 10.34.5
+corepack pnpm@10.34.5 --dir tests/fixtures/full-profile install --frozen-lockfile
 export PATH="$PWD/tests/fixtures/full-profile/node_modules/.bin:$PATH"
 # The flag initializes the shipped Web template and exits without opening a listener.
 dsh --profile web-oidc --from-default-profile web --dump-config >/dev/null
-# Install the exact 290-override compatibility fixture into the fresh profile.
+# Install the exact 291-override compatibility fixture into the fresh profile.
 python3 - "$DSH_HOME/profiles/web-oidc/package.json" <<'PY'
 import json, pathlib, sys
 profile = pathlib.Path(sys.argv[1])
 fixture = json.loads(pathlib.Path('tests/fixtures/full-profile/package.json').read_text())
 current = json.loads(profile.read_text())
-assert current['name'] == 'dsh-profile-web-oidc'
-assert not current.get('dependencies') and not current.get('pnpm')
+if current['name'] != 'dsh-profile-web-oidc' or current.get('dependencies') or current.get('pnpm'):
+    raise SystemExit('refusing nonempty or wrong profile')
 overrides = fixture['pnpm']['overrides']
-assert len(overrides) == 290
-assert sum(n == '@deepseek-ai/dsh' or n.startswith('@deepseek-ai/dsh-') for n in overrides) == 278
+if len(overrides) != 291 or sum(n == '@deepseek-ai/dsh' or n.startswith('@deepseek-ai/dsh-') for n in overrides) != 278:
+    raise SystemExit('override closure drift')
+if overrides.get('@deepseek-ai/libreoffice-kit@0.1.2>fflate') != '0.8.3':
+    raise SystemExit('missing Office remediation')
+current['packageManager'] = 'pnpm@10.34.5'
 current['pnpm'] = {'overrides': overrides}
 profile.write_text(json.dumps(current, indent=2) + '\n')
 profile.chmod(0o600)
 PY
+# Checks the actual CLI → Office → LibreOffice Kit → fflate resolution,
+# installed management executable, and profile Corepack selection.
+node scripts/attest-install.mjs tests/fixtures/full-profile "$DSH_HOME/profiles/web-oidc"
 TARBALL="$(npm pack --silent)"
 dsh plugin --profile web-oidc add --save-exact "file:$PWD/$TARBALL"
 dsh plugin --profile web-oidc add --save-exact \
@@ -45,10 +53,15 @@ dsh plugin --profile web-oidc add --save-exact \
   @deepseek-ai/dsh-client-connection@0.2.0-rc.2 \
   @deepseek-ai/dsh-credentials@0.2.0-rc.2 \
   @deepseek-ai/dsh-host-webserver@0.2.0-rc.2
+corepack pnpm@10.34.5 --dir "$DSH_HOME/profiles/web-oidc" install --frozen-lockfile
+corepack pnpm@10.34.5 --dir "$DSH_HOME/profiles/web-oidc" audit --audit-level=low
+node scripts/attest-install.mjs tests/fixtures/full-profile "$DSH_HOME/profiles/web-oidc"
+# Preserve this generated profile manifest/lock together with the exact tarball.
 # Fresh profile only: fail closed if a patch was already customized.
 python3 - "$DSH_HOME/profiles/web-oidc/cordis.patch.yml" <<'PY'
 import pathlib, sys
-assert [line.strip() for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.strip() and not line.lstrip().startswith('#')] == ['[]'], 'profile patch is not empty'
+if [line.strip() for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.strip() and not line.lstrip().startswith('#')] != ['[]']:
+    raise SystemExit('profile patch is not empty')
 PY
 install -m 600 examples/cordis.patch.yml "$DSH_HOME/profiles/web-oidc/cordis.patch.yml"
 ```
@@ -68,7 +81,10 @@ Create a confidential OIDC client at your provider with an **exact** redirect UR
 User=dsh
 Environment=DSH_HOME=/srv/dsh-home
 EnvironmentFile=/etc/dsh-oidc/oidc.env
-ExecStart=/usr/local/bin/dsh --profile web-oidc --no-open --host 127.0.0.1 --port 3080 --trusted-host dsh.example
+Environment=COREPACK_DEFAULT_TO_LATEST=0
+Environment=COREPACK_HOME=/srv/dsh-home/corepack
+Environment=PATH=/srv/dsh-candidate/tests/fixtures/full-profile/node_modules/.bin:/opt/node22/bin:/usr/bin:/bin
+ExecStart=/srv/dsh-candidate/tests/fixtures/full-profile/node_modules/.bin/dsh --profile web-oidc --no-open --host 127.0.0.1 --port 3080 --trusted-host dsh.example
 ```
 
 Systemd reads `EnvironmentFile` into the **inherited process environment**; this is different from DSH reading a `.env` layer. If using a container/orchestrator, inject the same keys as process environment from a restricted secret source. Process environment can be inspected by sufficiently privileged local principals; use a dedicated service user and appropriate host isolation. The issuer in each tuple must exactly match discovery, and the provider callback must exactly match `publicOrigin + /auth/callback`. A managed DSH credential record may supply the secret instead of the process variable if it is provisioned **before** the first login; do not assume an unauthenticated operator can reach a credential-setting UI. Never print resolved config or credential values to logs.

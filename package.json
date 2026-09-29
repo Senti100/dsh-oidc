@@ -3,6 +3,7 @@
   "version": "0.2.0-alpha.0",
   "description": "Provider-neutral OpenID Connect admission for DeepSeek Harness Web",
   "type": "module",
+  "packageManager": "pnpm@10.34.5",
   "license": "MIT",
   "engines": {
     "node": ">=22.19.0 <23"
@@ -40,6 +41,8 @@
     "test:acceptance": "npm run test:acceptance:full-profile",
     "test:acceptance:full-profile": "node scripts/integration-harness.mjs",
     "test:public-install": "python3 -B scripts/verify-public-install.py",
+    "test:office": "node scripts/verify-office.mjs",
+    "check:release": "npm run check && npm audit --audit-level=low && npm audit --omit=dev --audit-level=low && corepack pnpm@10.34.5 --dir tests/fixtures/full-profile audit --audit-level=low && npm run test:acceptance:full-profile && npm run test:public-install && npm run test:office",
     "pack:check": "node scripts/check-pack.mjs",
     "secret:scan": "node scripts/secret-scan.mjs",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run pack:check && npm run secret:scan"

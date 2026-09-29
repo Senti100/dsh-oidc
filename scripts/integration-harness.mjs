@@ -12,10 +12,17 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
+import { attestInstall } from './attest-install.mjs'
+
 const expectedCaddy = 'v2.10.2'
 const expectedDsh = '0.2.0-rc.2'
 const fixture = resolve('tests/fixtures/full-profile')
 const corepack = process.env.DSH_OIDC_COREPACK_BIN ?? 'corepack'
+const packageManager = 'pnpm@10.34.5'
+const pnpmVersion = execFileSync(corepack, [packageManager, '--version'], {
+  encoding: 'utf8',
+}).trim()
+if (pnpmVersion !== '10.34.5') throw new Error(`unexpected pnpm: ${pnpmVersion}`)
 const caddy = process.env.DSH_OIDC_CADDY_BIN
 if (caddy === undefined || caddy === '') {
   throw new Error(
@@ -96,7 +103,7 @@ try {
   const candidateTarball = join(artifacts, basename(packed[0].filename))
   copyFileSync(join(fixture, 'package.json'), join(runtime, 'package.json'))
   copyFileSync(join(fixture, 'pnpm-lock.yaml'), join(runtime, 'pnpm-lock.yaml'))
-  run(corepack, ['pnpm', '--dir', runtime, 'install', '--frozen-lockfile'])
+  run(corepack, [packageManager, '--dir', runtime, 'install', '--frozen-lockfile'])
 
   const runtimeManifest = JSON.parse(readFileSync(join(runtime, 'package.json'), 'utf8'))
   const overrides = runtimeManifest.pnpm?.overrides ?? {}
@@ -113,13 +120,13 @@ try {
     DSH_HOME: dshHome,
     PATH: `${join(runtime, 'node_modules/.bin')}:${process.env.PATH ?? ''}`,
   }
-  run(
-    join(runtime, 'node_modules/.bin/dsh'),
-    ['plugin', '--profile', 'web', 'add', '--save-exact', `file:${candidateTarball}`],
-    { env: environment },
-  )
+  run(join(runtime, 'node_modules/.bin/dsh'), ['--profile', 'web', '--dump-config'], {
+    env: environment,
+    capture: true,
+  })
   const profileManifestPath = join(dshHome, 'profiles/web/package.json')
   const profileManifest = JSON.parse(readFileSync(profileManifestPath, 'utf8'))
+  profileManifest.packageManager = packageManager
   profileManifest.pnpm = { overrides: runtimeManifest.pnpm.overrides }
   writeFileSync(profileManifestPath, `${JSON.stringify(profileManifest, null, 2)}\n`, {
     mode: 0o600,
@@ -132,6 +139,7 @@ try {
       'web',
       'add',
       '--save-exact',
+      `file:${candidateTarball}`,
       '@deepseek-ai/cordis@4.0.4',
       '@deepseek-ai/dsh-client-connection@0.2.0-rc.2',
       '@deepseek-ai/dsh-credentials@0.2.0-rc.2',
@@ -139,6 +147,18 @@ try {
     ],
     { env: environment },
   )
+
+  // A clean profile must replay its generated lock without a second resolution.
+  rmSync(join(dshHome, 'profiles/web/node_modules'), { recursive: true, force: true })
+  run(corepack, [
+    packageManager,
+    '--dir',
+    join(dshHome, 'profiles/web'),
+    'install',
+    '--frozen-lockfile',
+    '--offline',
+  ])
+  attestInstall(runtime, join(dshHome, 'profiles/web'))
 
   const testEnvironment = {
     ...environment,

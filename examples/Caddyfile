@@ -8,7 +8,7 @@
 	auto_https disable_redirects
 }
 https://dsh.example {
-	# DSH 0.1.5-rc.1's native cookie does not set Secure. Normalize an
+	# DSH 0.2.0-rc.2's native cookie does not set Secure. Normalize an
 	# existing Secure attribute before appending exactly once to dsh-auth-*.
 	# Caddy cannot change cookies that a browser already holds.
 	header {

@@ -5,11 +5,11 @@
   "engines": {
     "node": ">=22.19.0 <23"
   },
-  "packageManager": "pnpm@10.18.3",
+  "packageManager": "pnpm@10.34.5",
   "dependencies": {
     "@deepseek-ai/dsh": "0.2.0-rc.2",
-    "playwright": "1.55.0",
-    "pnpm": "10.18.3"
+    "playwright": "1.55.1",
+    "pnpm": "10.34.5"
   },
   "pnpm": {
     "overrides": {
@@ -302,7 +302,8 @@
       "@deepseek-ai/node-addon-system-darwin-x64": "0.1.2",
       "@deepseek-ai/node-addon-system-linux-arm64": "0.1.2",
       "@deepseek-ai/node-addon-system-linux-x64": "0.1.2",
-      "@deepseek-ai/schemastery": "3.18.4"
+      "@deepseek-ai/schemastery": "3.18.4",
+      "@deepseek-ai/libreoffice-kit@0.1.2>fflate": "0.8.3"
     }
   }
 }

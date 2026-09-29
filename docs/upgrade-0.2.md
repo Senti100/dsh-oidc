@@ -12,7 +12,7 @@ Compare upstream tag `dsh-v0.1.5-rc.1` (`183f08e9c6dde7e36cd2318eaee70b0da08fb35
 - `packages/api/gateway/src/index.ts`: WebSocket mux registration waits for application readiness and calls `connection.admit`; peer/uplink transport internals changed. Real authenticated and denied browser upgrades are therefore a required gate, not inferred from successful TypeScript compilation.
 - `packages/host/webserver/src/index.ts`: exact-route registration/disposal remains compatible; multipart compression support changed. `CredentialProvider.resolve` remains compatible. New upstream account-platform services are not this plugin's OIDC authentication.
 - `packages/bundle/web-app/src/index.ts`: startup audits now precede URL readiness. The public `web-runtime.config.printUrl: false` setting still suppresses bearer startup URLs; the separate-profile smoke verifies it.
-- Cordis is 4.0.4 and Schemastery is 3.18.4. The pinned fixture includes 278 DSH packages and 12 supporting scoped package overrides (290 total), derived by traversing dependency, optional-dependency, and peer-dependency edges from the upstream CLI manifest at the target commit. Only the installed closure is runtime-attested; an override is not proof a package was loaded.
+- Cordis is 4.0.4 and Schemastery is 3.18.4. The pinned fixture includes 278 DSH packages and 12 supporting scoped package overrides plus one parent-scoped Office fix (291 total), derived by traversing dependency, optional-dependency, and peer-dependency edges from the upstream CLI manifest at the target commit. Only the installed closure is runtime-attested; an override is not proof a package was loaded.
 
 ## Clean dependency tree is mandatory
 
@@ -22,14 +22,14 @@ For ordinary reproduction, use the committed locks, not another resolution:
 
 ```sh
 npm ci --ignore-scripts
-corepack pnpm --dir tests/fixtures/full-profile install --frozen-lockfile
+corepack pnpm@10.34.5 --dir tests/fixtures/full-profile install --frozen-lockfile
 tests/fixtures/full-profile/node_modules/.bin/playwright install chromium
 npm run check
 DSH_OIDC_CADDY_BIN=/path/to/caddy-2.10.2 npm run test:acceptance:full-profile
 PYTHONOPTIMIZE=1 npm run test:public-install
 ```
 
-Node 22.19+ within Node 22, pnpm 10.18.3, and Caddy 2.10.2 are the certified lane. The runtime fixture's plain-dependency/no-`dsh.bundle` warnings are expected because the explicit Cordis patch mounts the plugin. Profile peer warnings for scope/invariants are supplied by the exact CLI runtime and are checked by the complete runtime closure gate; do not install a second unreviewed core graph to silence them. Native build scripts blocked by pnpm are not automatically authorized; this gate does not certify terminal/native-addon functionality or model execution.
+Node 22.19+ within Node 22, pnpm 10.34.5, and Caddy 2.10.2 are the certified lane. The runtime fixture's plain-dependency/no-`dsh.bundle` warnings are expected because the explicit Cordis patch mounts the plugin. Profile peer warnings for scope/invariants are supplied by the exact CLI runtime and are checked by the complete runtime closure gate; do not install a second unreviewed core graph to silence them. Native build scripts blocked by pnpm are not automatically authorized; this gate does not certify terminal/native-addon functionality or model execution.
 
 The target release was published on 2026-09-29. An isolated test of this specifically requested prerelease is not a waiver of the normal dependency-age/review gate for production deployment. Preserve the exact locks and package integrity hashes; do not silently refresh to newer releases.
 
@@ -47,6 +47,14 @@ The prior public source is pinned at `94d4bfd4b36558dcbf1ccc807cd4905d2bf48c6e` 
 
 Caddy still secures newly minted native cookies and gates every application owner. Existing non-Secure cookies are not retroactively repaired; shared TCP/80 does not become strictly HTTPS-only. Logout denies subsequent requests/upgrades but does not terminate a WebSocket already established before logout. All allowed identities share the process operator. Synthetic-provider success does not certify a real provider or production browser session.
 
-## Dependency audit hold
+## Bounded dependency successor — independent review required
 
-The plugin's full and production-only npm audits report no vulnerabilities at candidate preparation. A separate audit of the complete test/runtime fixture is **not green**: it reports 28 advisories (15 high, 13 moderate). These include the inherited pinned pnpm 10.18.3 and Playwright 1.55.0 tools, plus `fflate` 0.8.2 under upstream DSH's `dsh-skill-office → libreoffice-kit` dependency (GHSA-px8p-9vwx-vf98). This lane does not silently replace upstream/tooling pins or claim these advisories are harmless. A separately reviewed tooling/runtime dependency remediation and fresh acceptance is required before treating the whole stack as release-ready. No vulnerable-archive or untrusted-repository payload is part of these synthetic tests.
+The preserved predecessor `87e9951cc822173370ff6c4cb5d7c2341d805955` had 28 fixture advisories (15 high / 13 moderate). Its scoped OIDC compatibility PASS did not clear deployment. This successor selects minimal compatible, aged patches: pnpm **10.34.5** (published 2026-07-10), Playwright/Playwright Core **1.55.1** (2025-09-23), and **fflate 0.8.3** (2026-05-16), with the sole runtime override `@deepseek-ai/libreoffice-kit@0.1.2>fflate`. Selection was checked against registry metadata and advisory ranges with a seven-day cutoff on 2026-09-29; no DSH release or other transitive package version was refreshed. New pnpm lock metadata adds libc selectors to unchanged platform packages.
+
+The pnpm findings concern install/management inputs (not an unauthenticated OIDC route). Playwright's cited installer issue concerns macOS Chrome/Edge reinstall scripts, not the tested Linux Chromium runtime. The fflate ZIP64 loop is reachable via Office conversion; the predecessor's worker deadline bounded its impact but did not remove the issue. The permanent Office gate carries the independent malformed ZIP64 discriminator, requires immediate parser rejection and non-timeout converter rejection, and adds successful healthy DOCX-to-PDF conversion. Fonts must be available; `DSH_OIDC_FONT_DIR` can select an existing read-only font directory.
+
+**Deployment closure matters:** the shipped Web/Office bundles resolve from the CLI installation. Use this checkout's frozen fixture CLI as documented, not a global/upstream DSH binary plus a patched profile. Both the runtime manifest/lock and newly generated profile receive the scoped override. `scripts/attest-install.mjs` follows the actual CLI → Office → LibreOffice Kit → fflate path, executes the installed management pnpm, and checks profile Corepack selection. The plugin tarball alone cannot impose an override on its parent installation.
+
+The harness binds Corepack invocation to `pnpm@10.34.5`, checks its returned version, pins fresh profiles before any plugin install, and replays the generated profile lock offline. The separate optimized-Python installation uses private HOME/XDG paths, explicit failures (not `assert`), and audits the installed profile. `npm run check:release` short-circuits with nonzero exit on any child gate failure; audit failures are not waived. CI runs full fixture audit and Office controls in addition to the existing gates.
+
+Fresh local evidence is still implementation qualification, **not independent acceptance or deployment permission**. Preserve failed attempts and exact artifacts; obtain a fresh review of the complete successor. Real issuer/browser, incumbent-data restore rehearsal, native terminal/model functions, host proxy/network controls and explicit cutover authorization remain separate.
