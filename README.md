@@ -12,7 +12,7 @@ DSH 0.2.0-rc.2 has one process-wide operator peer. Every admitted user shares th
 
 ## Compatibility
 
-This compatibility candidate is intentionally pinned to the public DSH `0.2.0-rc.2` package interfaces. DSH APIs are pre-stable; test and release a separate adapter/version before widening these exact peer versions. Later upstream releases are a future compatibility lane, not implied supported versions.
+This compatibility candidate is intentionally pinned to the public DSH `0.2.0-rc.2` package interfaces. **This release (0.2.1-alpha.0) was tested with DSH `0.2.0-rc.2`**: full-profile acceptance (real Web profile, Caddy 2.10.2, synthetic OIDC, native cookies, WebSocket, uploads), the separate public-install gate, and a live HTTPS deployment behind Caddy 2.11.3. DSH APIs are pre-stable; test and release a separate adapter/version before widening these exact peer versions. Later upstream releases are a future compatibility lane, not implied supported versions.
 
 See [the upstream seam audit and clean upgrade/rollback procedure](docs/upgrade-0.2.md). This candidate does not support a mixed 0.1.x/0.2.x graph.
 
