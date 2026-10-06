@@ -29,7 +29,7 @@ https://dsh.example {
 	request_header -X-Remote-User
 	request_header -Remote-User
 
-	@oidcEndpoints path /auth/login /auth/callback /auth/check /auth/logout
+	@oidcEndpoints path /auth/login /auth/callback /auth/check /auth/signin /auth/logout
 	route {
 		# Only the four registered OIDC endpoints bypass admission.
 		handle @oidcEndpoints {

@@ -117,6 +117,18 @@ function formBody(req: IncomingMessage, maximum = 16_384): Promise<URLSearchPara
   })
 }
 
+const SIGNIN_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Sign in · DSH</title><style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#111;color:#eee}main{text-align:center;padding:2rem}a{display:inline-block;margin-top:1rem;padding:.6rem 1.4rem;background:#2563eb;color:#fff;border-radius:.5rem;text-decoration:none;font-weight:600}</style></head><body><main><h1>DSH</h1><p>Authentication required.</p><a href="/auth/login?nav=1" rel="nofollow">Sign in</a></main></body></html>`
+
+function wantsNavigation(req: IncomingMessage): boolean {
+  const fetchMode = header(req, 'sec-fetch-mode')
+  if (fetchMode !== undefined) return fetchMode === 'navigate'
+  const accept = header(req, 'accept') ?? ''
+  return (
+    !accept.includes('*/*') &&
+    (accept.includes('text/html') || accept.includes('application/xhtml+xml'))
+  )
+}
+
 export class OidcAdmission {
   private readonly transactions: AuthorizationTransactions
   private readonly sessions: BrowserSessions
@@ -227,16 +239,28 @@ export class OidcAdmission {
     }
   }
 
+  signin(req: IncomingMessage, res: ServerResponse): void {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return methodNotAllowed(res, 'GET, HEAD')
+    if (!this.trustedRequest(req)) return plain(res, 403, 'forbidden\n')
+    res.writeHead(200, {
+      ...SECURITY_HEADERS,
+      'content-type': 'text/html; charset=utf-8',
+      'content-security-policy':
+        "default-src 'none'; style 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+    })
+    res.end(req.method === 'HEAD' ? undefined : SIGNIN_HTML)
+  }
+
   check(req: IncomingMessage, res: ServerResponse): void {
     if (req.method !== 'GET' && req.method !== 'HEAD') return methodNotAllowed(res, 'GET, HEAD')
     if (!this.trustedRequest(req)) return plain(res, 403, 'forbidden\n', req.method === 'HEAD')
     const session = this.sessions.read(this.sessionValue(req))
-    plain(
-      res,
-      session === undefined ? 401 : 204,
-      session === undefined ? 'unauthorized\n' : '',
-      req.method === 'HEAD',
-    )
+    if (session !== undefined) return plain(res, 204, '', req.method === 'HEAD')
+    // Browser navigations are redirected to the bundled sign-in page so the
+    // forward_auth gate presents human-friendly UX; every other client
+    // (fetch/XHR/API/WebSocket subrequests) keeps the plain 401 contract.
+    if (req.method === 'GET' && wantsNavigation(req)) return redirect(res, '/auth/signin')
+    plain(res, 401, 'unauthorized\n', req.method === 'HEAD')
   }
 
   logoutConfirmation(req: IncomingMessage, res: ServerResponse): void {

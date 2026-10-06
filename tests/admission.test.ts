@@ -142,6 +142,49 @@ async function login(
 beforeEach(() => vi.restoreAllMocks())
 
 describe('OIDC route admission', () => {
+  it('serves the bundled sign-in page to navigations and keeps the plain 401 for API clients', async () => {
+    const { admission } = harness()
+
+    const browser = response()
+    admission.check(
+      request('GET', '/auth/check', { accept: 'text/html,application/xhtml+xml' }),
+      browser.value,
+    )
+    expect(browser.captured.status).toBe(303)
+    expect(browser.captured.headers?.location).toBe('/auth/signin')
+
+    const fetchClient = response()
+    admission.check(request('GET', '/auth/check', { accept: '*/*' }), fetchClient.value)
+    expect(fetchClient.captured.status).toBe(401)
+    expect(fetchClient.captured.body).toBe('unauthorized\n')
+
+    const noSecFetchNoHtml = response()
+    admission.check(
+      request('GET', '/auth/check', { accept: 'application/json' }),
+      noSecFetchNoHtml.value,
+    )
+    expect(noSecFetchNoHtml.captured.status).toBe(401)
+
+    const head = response()
+    admission.check(request('HEAD', '/auth/check', { accept: 'text/html' }), head.value)
+    expect(head.captured.status).toBe(401)
+    expect(head.captured.body).toBeUndefined()
+
+    const page = response()
+    admission.signin(request('GET', '/auth/signin'), page.value)
+    expect(page.captured.status).toBe(200)
+    expect(page.captured.headers?.['content-type']).toContain('text/html')
+    expect(String(page.captured.body)).toContain('/auth/login')
+
+    const badHost = response()
+    admission.signin(request('GET', '/auth/signin', { host: 'evil.example' }), badHost.value)
+    expect(badHost.captured.status).toBe(403)
+
+    const method = response()
+    admission.signin(request('POST', '/auth/signin'), method.value)
+    expect(method.captured).toMatchObject({ status: 405, headers: { allow: 'GET, HEAD' } })
+  })
+
   it('answers HEAD login without creating transaction state', async () => {
     const { admission, protocol } = harness()
     const start = vi.spyOn(protocol, 'start')

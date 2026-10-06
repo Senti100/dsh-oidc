@@ -151,9 +151,10 @@ describe('DSH public compatibility surface', () => {
       { kind: 'exact', path: '/auth/login' },
       { kind: 'exact', path: '/auth/callback' },
       { kind: 'exact', path: '/auth/check' },
+      { kind: 'exact', path: '/auth/signin' },
       { kind: 'exact', path: '/auth/logout' },
     ])
-    expect(effects).toHaveLength(4)
+    expect(effects).toHaveLength(5)
     for (const dispose of effects) dispose()
     expect(routes).toEqual([])
   })
