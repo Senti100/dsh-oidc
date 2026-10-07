@@ -34,7 +34,7 @@ current = json.loads(profile.read_text())
 if current['name'] != 'dsh-profile-web-oidc' or current.get('dependencies') or current.get('pnpm'):
     raise SystemExit('refusing nonempty or wrong profile')
 overrides = fixture['pnpm']['overrides']
-if len(overrides) != 293 or sum(n == '@deepseek-ai/dsh' or n.startswith('@deepseek-ai/dsh-') for n in overrides) != 278:
+if len(overrides) != 293 or sum(n == '@deepseek-ai/dsh' or n.startswith('@deepseek-ai/dsh-') for n in overrides) != 279:
     raise SystemExit('override closure drift')
 if overrides.get('@deepseek-ai/libreoffice-kit@0.1.2>fflate') != '0.8.3':
     raise SystemExit('missing Office remediation')

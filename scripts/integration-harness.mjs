@@ -110,9 +110,9 @@ try {
   const overrideCount = Object.keys(overrides).filter(
     (name) => name === '@deepseek-ai/dsh' || name.startsWith('@deepseek-ai/dsh-'),
   ).length
-  if (overrideCount !== 278) {
+  if (overrideCount !== 279) {
     throw new Error(
-      `full-profile override closure changed: expected 278, observed ${String(overrideCount)}`,
+      `full-profile override closure changed: expected 279, observed ${String(overrideCount)}`,
     )
   }
   const environment = {
