@@ -127,7 +127,10 @@ const docx = zipSync(
 )
 const healthy = await createConverter({
   timeoutMs: 30000,
-  fontDirectories: process.env.DSH_OIDC_FONT_DIR ? [process.env.DSH_OIDC_FONT_DIR] : undefined,
+  // Omit the key entirely when unset: libreoffice-kit's resolveOptions spreads
+  // caller input over its defaults, so an explicit `undefined` would replace
+  // the default system font directories and throw during validation.
+  ...(process.env.DSH_OIDC_FONT_DIR ? { fontDirectories: [process.env.DSH_OIDC_FONT_DIR] } : {}),
   fontMetadataCacheDirectory: false,
 })
 try {
