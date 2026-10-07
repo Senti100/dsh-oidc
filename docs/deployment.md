@@ -25,7 +25,7 @@ corepack pnpm@10.34.5 --dir tests/fixtures/full-profile install --frozen-lockfil
 export PATH="$PWD/tests/fixtures/full-profile/node_modules/.bin:$PATH"
 # The flag initializes the shipped Web template and exits without opening a listener.
 dsh --profile web-oidc --from-default-profile web --dump-config >/dev/null
-# Install the exact 291-override compatibility fixture into the fresh profile.
+# Install the exact 293-override compatibility fixture into the fresh profile.
 python3 - "$DSH_HOME/profiles/web-oidc/package.json" <<'PY'
 import json, pathlib, sys
 profile = pathlib.Path(sys.argv[1])
@@ -34,7 +34,7 @@ current = json.loads(profile.read_text())
 if current['name'] != 'dsh-profile-web-oidc' or current.get('dependencies') or current.get('pnpm'):
     raise SystemExit('refusing nonempty or wrong profile')
 overrides = fixture['pnpm']['overrides']
-if len(overrides) != 291 or sum(n == '@deepseek-ai/dsh' or n.startswith('@deepseek-ai/dsh-') for n in overrides) != 278:
+if len(overrides) != 293 or sum(n == '@deepseek-ai/dsh' or n.startswith('@deepseek-ai/dsh-') for n in overrides) != 278:
     raise SystemExit('override closure drift')
 if overrides.get('@deepseek-ai/libreoffice-kit@0.1.2>fflate') != '0.8.3':
     raise SystemExit('missing Office remediation')

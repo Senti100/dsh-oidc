@@ -303,7 +303,9 @@
       "@deepseek-ai/node-addon-system-linux-arm64": "0.1.2",
       "@deepseek-ai/node-addon-system-linux-x64": "0.1.2",
       "@deepseek-ai/schemastery": "3.18.4",
-      "@deepseek-ai/libreoffice-kit@0.1.2>fflate": "0.8.3"
+      "@deepseek-ai/libreoffice-kit@0.1.2>fflate": "0.8.3",
+      "cacheable-request>http-cache-semantics": "4.3.0",
+      "@deepseek-ai/dsh-mcp-client>@modelcontextprotocol/client": "2.3.1"
     }
   }
 }
