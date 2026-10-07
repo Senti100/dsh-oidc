@@ -62,7 +62,7 @@ def main() -> None:
     require(not any(isinstance(node, ast.Assert) for node in ast.walk(source_tree)), "release smoke must use explicit failures, not optimized-away assertions")
     fixture = json.loads((REPO / "tests/fixtures/full-profile/package.json").read_text())
     overrides = fixture["pnpm"]["overrides"]
-    require(len(overrides) == 291, "full-profile override count changed")
+    require(len(overrides) == 293, "full-profile override count changed")
     require(CLI.is_file(), "install the locked full-profile fixture before this smoke")
     with tempfile.TemporaryDirectory(prefix="dsh-oidc-public-install-") as scratch:
         root = Path(scratch)
@@ -151,7 +151,7 @@ console.log(JSON.stringify(Object.fromEntries(names.map(name => {
         require(b"/?token=" not in output, "native bootstrap bearer URL printed despite the public patch")
         require(child.poll() is not None, "disposable DSH process survived termination")
         require(not check_route(port), "disposable DSH listener survived termination")
-    print("public web-oidc install PASS: 291 overrides, exact 0.2.0-rc.2 peers, auth-check 401, no printed bearer URL, clean teardown")
+    print("public web-oidc install PASS: 293 overrides, exact 0.2.0-rc.2 peers, auth-check 401, no printed bearer URL, clean teardown")
 
 
 if __name__ == "__main__":
