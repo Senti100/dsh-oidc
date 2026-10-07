@@ -753,8 +753,11 @@ describe('published DSH 0.2.0-rc.2 full Web profile', { concurrent: false }, () 
       '/events',
       '/api/remote.mux',
     ]) {
+      // Browser navigations are redirected to the bundled sign-in page; the
+      // plain 401 contract is covered by the API-client assertions below.
       const response = await page.goto(publicOrigin + path, { waitUntil: 'domcontentloaded' })
-      expect(response?.status(), path).toBe(401)
+      expect(response?.status(), path).toBe(200)
+      expect(new URL(page.url()).pathname, path).toBe('/auth/signin')
     }
     // Only the four registered OIDC paths may bypass the outer admission gate.
     expect((await page.goto(publicOrigin + '/auth/not-registered'))?.status()).toBe(404)
@@ -797,7 +800,9 @@ describe('published DSH 0.2.0-rc.2 full Web profile', { concurrent: false }, () 
       const cookies = await deniedContext.cookies(publicOrigin)
       expect(cookies.some((cookie) => cookie.name.startsWith('dsh-auth-'))).toBe(false)
       expect(cookies.some((cookie) => cookie.name === '__Host-dsh-oidc-session')).toBe(false)
-      expect((await deniedPage.goto(`${publicOrigin}/`))?.status()).toBe(401)
+      // Navigations reach the bundled sign-in page instead of a plain 401.
+      expect((await deniedPage.goto(`${publicOrigin}/`))?.status()).toBe(200)
+      expect(new URL(deniedPage.url()).pathname).toBe('/auth/signin')
     } finally {
       providerSubject = 'synthetic-operator'
       await deniedContext.close()
@@ -935,9 +940,12 @@ describe('published DSH 0.2.0-rc.2 full Web profile', { concurrent: false }, () 
       await staleContext.addCookies(allCookies)
       const stalePage = await staleContext.newPage()
       const denied = await stalePage.goto(`${publicOrigin}/`, { waitUntil: 'domcontentloaded' })
-      expect(denied?.status()).toBe(401)
+      // Navigations reach the bundled sign-in page instead of a plain 401.
+      expect(denied?.status()).toBe(200)
+      expect(new URL(stalePage.url()).pathname).toBe('/auth/signin')
       for (const path of ['/api/__acceptance_missing__', '/api/remote.mux', realAssetPath]) {
-        expect((await stalePage.goto(publicOrigin + path))?.status(), path).toBe(401)
+        expect((await stalePage.goto(publicOrigin + path))?.status(), path).toBe(200)
+        expect(new URL(stalePage.url()).pathname, path).toBe('/auth/signin')
       }
       const opened = await stalePage.evaluate(
         (url) =>
