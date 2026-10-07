@@ -1,8 +1,8 @@
 const SUPPORTED_RUNTIME_PACKAGES = {
-  '@deepseek-ai/cordis': '4.0.2',
-  '@deepseek-ai/dsh-client-connection': '0.1.5-rc.1',
-  '@deepseek-ai/dsh-credentials': '0.1.5-rc.1',
-  '@deepseek-ai/dsh-host-webserver': '0.1.5-rc.1',
+  '@deepseek-ai/cordis': '4.0.4',
+  '@deepseek-ai/dsh-client-connection': '0.2.0-rc.2',
+  '@deepseek-ai/dsh-credentials': '0.2.0-rc.2',
+  '@deepseek-ai/dsh-host-webserver': '0.2.0-rc.2',
 } as const
 
 export type SupportedRuntimePackage = keyof typeof SUPPORTED_RUNTIME_PACKAGES

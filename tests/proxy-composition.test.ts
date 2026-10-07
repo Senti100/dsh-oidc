@@ -20,7 +20,7 @@ describe('proxy and composition security examples', () => {
 
   it('routes only exact auth endpoints and gates every other path before one reverse proxy', () => {
     const authAt = caddy.indexOf(
-      '@oidcEndpoints path /auth/login /auth/callback /auth/check /auth/logout',
+      '@oidcEndpoints path /auth/login /auth/callback /auth/check /auth/signin /auth/logout',
     )
     const routeAt = caddy.indexOf('route {', authAt)
     const authHandleAt = caddy.indexOf('handle @oidcEndpoints', routeAt)

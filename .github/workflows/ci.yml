@@ -33,9 +33,13 @@ jobs:
           set -euo pipefail
           npm install --global --force corepack@0.34.0
           corepack enable
-          corepack prepare pnpm@10.18.3 --activate
-          corepack pnpm --dir tests/fixtures/full-profile install --frozen-lockfile
+          corepack prepare pnpm@10.34.5 --activate
+          corepack pnpm@10.34.5 --dir tests/fixtures/full-profile install --frozen-lockfile
           tests/fixtures/full-profile/node_modules/.bin/playwright install --with-deps chromium
+      - name: Audit the installable runtime and tooling closure
+        run: corepack pnpm@10.34.5 --dir tests/fixtures/full-profile audit --audit-level=low
+      - name: Office healthy and malformed ZIP64 regression controls
+        run: npm run test:office
       - name: Provision exact Caddy acceptance binary
         shell: bash
         run: |

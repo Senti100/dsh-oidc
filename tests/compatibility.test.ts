@@ -19,7 +19,7 @@ function pluginDependencies(
 }
 
 describe('DSH public compatibility surface', () => {
-  it('uses only the 0.1.5-rc.1 public seam', () => {
+  it('uses only the 0.2.0-rc.2 public seam', () => {
     expect(name).toBe('senti100-oidc')
     expect(inject).toEqual(['webServer', 'connection', 'credentials'])
     expect(typeof apply).toBe('function')
@@ -32,14 +32,14 @@ describe('DSH public compatibility surface', () => {
   it('pins exact pre-stable peer versions in package metadata', async () => {
     const manifest = (await import('../package.json', { with: { type: 'json' } })).default
     expect(manifest.peerDependencies).toMatchObject({
-      '@deepseek-ai/dsh-client-connection': '0.1.5-rc.1',
-      '@deepseek-ai/dsh-credentials': '0.1.5-rc.1',
-      '@deepseek-ai/dsh-host-webserver': '0.1.5-rc.1',
+      '@deepseek-ai/dsh-client-connection': '0.2.0-rc.2',
+      '@deepseek-ai/dsh-credentials': '0.2.0-rc.2',
+      '@deepseek-ai/dsh-host-webserver': '0.2.0-rc.2',
     })
     expect(manifest.exports).not.toHaveProperty('./client')
   })
 
-  it('records current upstream as source-compatible but explicitly runtime-unsupported', async () => {
+  it('retains the historical 0.1.7 source-only audit without claiming runtime support', async () => {
     const fixture = (
       await import('./fixtures/dsh-0.1.7-alpha.2-public-seams.json', { with: { type: 'json' } })
     ).default
@@ -79,6 +79,33 @@ describe('DSH public compatibility surface', () => {
       })
     },
   )
+
+  it.each([
+    ['@deepseek-ai/cordis', '4.0.2'],
+    ['@deepseek-ai/dsh-client-connection', '0.1.5-rc.1'],
+    ['@deepseek-ai/dsh-credentials', '0.1.5-rc.1'],
+    ['@deepseek-ai/dsh-host-webserver', '0.1.5-rc.1'],
+  ])(
+    'rejects a stale prior-release peer %s@%s in an otherwise upgraded graph',
+    async (name, version) => {
+      await expect(
+        assertRuntimeCompatibility(async (requested) => ({
+          version: requested === name ? version : supportedRuntimePackages[requested],
+        })),
+      ).rejects.toMatchObject({ packageName: name, observedVersion: version })
+    },
+  )
+
+  it('records the inspected target source and real-stack compatibility contract', async () => {
+    const fixture = (
+      await import('./fixtures/dsh-0.2.0-rc.2-public-seams.json', { with: { type: 'json' } })
+    ).default
+    expect(fixture.upstreamVersion).toBe('0.2.0-rc.2')
+    expect(fixture.sourceRevision).toBe('639ed015397290b3745d163aafe02ffee4aa3f84')
+    expect(fixture.runtimePackages).toEqual(supportedRuntimePackages)
+    // This fixture is an audit record, not a substitute for the real-stack gate.
+    expect(fixture.proxyRequired).toBe(true)
+  })
 
   it('refuses unreadable public metadata with a sanitized marker', async () => {
     await expect(
@@ -124,9 +151,10 @@ describe('DSH public compatibility surface', () => {
       { kind: 'exact', path: '/auth/login' },
       { kind: 'exact', path: '/auth/callback' },
       { kind: 'exact', path: '/auth/check' },
+      { kind: 'exact', path: '/auth/signin' },
       { kind: 'exact', path: '/auth/logout' },
     ])
-    expect(effects).toHaveLength(4)
+    expect(effects).toHaveLength(5)
     for (const dispose of effects) dispose()
     expect(routes).toEqual([])
   })

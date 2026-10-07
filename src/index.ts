@@ -31,6 +31,11 @@ export async function apply(ctx: Context, rawConfig: OidcConfig): Promise<void> 
     { kind: 'exact', path: '/auth/check', handler: (req, res) => admission.check(req, res) },
     {
       kind: 'exact',
+      path: '/auth/signin',
+      handler: (req, res) => admission.signin(req, res),
+    },
+    {
+      kind: 'exact',
       path: '/auth/logout',
       handler: (req, res) =>
         req.method === 'POST' ? admission.logout(req, res) : admission.logoutConfirmation(req, res),
